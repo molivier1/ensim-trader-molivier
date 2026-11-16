@@ -7,6 +7,12 @@ HOLDINGS_URL = "http://raw.githubusercontent.com/exofri/ensim-trade-center/refs/
 
 MIN_MONEY_RESERVE = 50 # never let a buy signal spend below this much money
 
+# Initial strategy parameters; validate them with a historical simulation.
+SHORT_WINDOW = 5
+LONG_WINDOW = 20
+TREND_THRESHOLD = 0.01  # ignore gaps smaller than 1% of the long average
+TRADE_SIGNAL = 0.1  # request 10 units per market tick before budget constraints
+
 def fetch_json(url):
     resp = requests.get(url, proxies={"http": None, "https": None}, timeout=(10, 20))
     resp.raise_for_status()
@@ -14,10 +20,26 @@ def fetch_json(url):
 
 def compute_signal(prices):
     """
-    YOUR TASK -- see "Your task: design your trading signal" below for the
-    exact contract. Replace this body; as written it never trades.
+    Follow the trend using the last 5 and 20 observed prices.
+
+    Return +0.1 (buy), -0.1 (sell), or 0.0 (hold). A relative gap
+    of at least 1% is required to trade. Windows count observations,
+    not days. Only the supplied history is used, never future prices.
     """
-    return 0.0  # TODO: replace with your own signal logic
+    if len(prices) < LONG_WINDOW:
+        return 0.0
+
+    short_average = sum(prices[-SHORT_WINDOW:]) / SHORT_WINDOW
+    long_average = sum(prices[-LONG_WINDOW:]) / LONG_WINDOW
+    if long_average <= 0:
+        return 0.0
+
+    relative_gap = (short_average - long_average) / long_average
+    if relative_gap >= TREND_THRESHOLD:
+        return TRADE_SIGNAL
+    if relative_gap <= -TREND_THRESHOLD:
+        return -TRADE_SIGNAL
+    return 0.0
 
 def apply_budget_guard(raw_signal, money, price, reserve=MIN_MONEY_RESERVE):
     # A buy signal (positive) that would spend into the reserve gets scaled down,

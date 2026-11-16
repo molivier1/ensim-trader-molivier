@@ -21,6 +21,6 @@ jobs:
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add decision.json
+          git add decision.json docs/data/decision_log.json docs/data/portfolio_history.json docs/data/strategy.json
           git commit -m "Update decision [automated]" || echo "Nothing to commit"
           git push

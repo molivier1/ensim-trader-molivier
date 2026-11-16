@@ -1,19 +1,48 @@
 <!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Feed sanity check</title></head>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Suivi du marché — ENSIM Trade Center</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="dashboard.js" defer></script>
+</head>
 <body>
-  <h1>Feed sanity check — not your dashboard</h1>
-  <p>This just confirms your two feed URLs actually return real data. Your actual dashboard (return vs. baselines, risk/volatility, your product-level signal, a decision log) is a separate thing you build yourself — see below.</p>
-  <pre id="out">Loading...</pre>
-<script>
-const MARKET_URL = "https://raw.githubusercontent.com/exofri/ensim-trade-center/refs/heads/main/docs/data/market.json";
-const HOLDINGS_URL = "https://raw.githubusercontent.com/exofri/ensim-trade-center/refs/heads/main/traders/molivier/holdings.json";
-Promise.all([fetch(MARKET_URL).then(r => r.json()), fetch(HOLDINGS_URL).then(r => r.json())])
-  .then(([market, holdings]) => {
-    document.getElementById('out').textContent =
-      'MARKET:\n' + JSON.stringify(market, null, 2) + '\n\nHOLDINGS:\n' + JSON.stringify(holdings, null, 2);
-  })
-  .catch(err => { document.getElementById('out').textContent = 'Could not load data: ' + err; });
-</script>
+  <main>
+    <header>
+      <div><p class="eyebrow">ENSIM Trade Center · molivier</p><h1>Suivi du marché</h1><p class="muted">Prix, décisions et suivi du portefeuille.</p></div>
+      <div class="refresh"><button id="refresh" type="button">Actualiser</button><p id="refreshed" class="muted" aria-live="polite">Chargement…</p></div>
+    </header>
+    <div id="status" class="notice" role="status">Chargement des flux officiels…</div>
+    <section class="metrics" aria-label="Indicateurs du portefeuille">
+      <article class="metric"><h2>Valeur du portefeuille</h2><p id="portfolio-value">—</p><small>Cash + produits aux derniers prix</small></article>
+      <article class="metric"><h2>Rendement du suivi</h2><p id="return">—</p><small>Depuis la première observation enregistrée</small></article>
+      <article class="metric"><h2>Cash disponible</h2><p id="cash">—</p><small>Réserve prévue par la stratégie : 50</small></article>
+      <article class="metric"><h2>Baisse maximale</h2><p id="max-drawdown">—</p><small>Perte maximale depuis un sommet observé</small></article>
+    </section>
+    <section class="panel" aria-labelledby="prices-title">
+      <div class="section-heading"><h2 id="prices-title">Prix et indicateurs</h2><div class="controls"><div id="products" class="tabs" aria-label="Produit affiché"></div><label>Période <select id="period"><option value="60">60 dernières observations</option><option value="0">Tout l’historique</option></select></label></div></div>
+      <p class="muted">Le seuil d’achat est la moyenne sur 20 observations moins un écart-type. Un prix bas ne garantit pas une remontée.</p>
+      <div id="price-chart" class="chart"></div><div id="price-legend" class="legend"></div>
+      <div class="table-wrap"><table><caption class="sr-only">Indicateurs actuels par produit</caption><thead><tr><th>Produit</th><th>Dernier prix</th><th>Moyenne 20</th><th>Seuil d’achat</th><th>Lecture de l’indicateur</th></tr></thead><tbody id="indicators"></tbody></table></div>
+      <p id="market-time" class="footnote"></p>
+    </section>
+    <section class="panel" aria-labelledby="performance-title">
+      <h2 id="performance-title">Performance et références officielles</h2>
+      <p class="muted">Les courbes sont ramenées à 100 au début du suivi commun, pour comparer leur évolution.</p>
+      <div id="performance-chart" class="chart"></div><div id="performance-legend" class="legend"></div>
+      <p id="performance-note" class="footnote"></p>
+      <div class="table-wrap"><table><caption class="sr-only">Valeurs actuelles du portefeuille et des trois références</caption><thead><tr><th>Portefeuille</th><th>Valeur actuelle</th><th>Source</th></tr></thead><tbody id="comparison"></tbody></table></div>
+    </section>
+    <div class="two-columns">
+      <section class="panel" aria-labelledby="risk-title"><h2 id="risk-title">Risque : baisse depuis un sommet</h2><p class="muted">0 % correspond à un sommet. Une valeur plus élevée indique une perte plus importante depuis ce sommet.</p><div id="risk-chart" class="chart compact"></div><p id="risk-note" class="footnote"></p></section>
+      <section class="panel" aria-labelledby="holdings-title"><h2 id="holdings-title">Répartition du portefeuille</h2><div class="table-wrap"><table><thead><tr><th>Produit</th><th>Quantité</th><th>Valeur</th><th>Part</th></tr></thead><tbody id="holdings"></tbody></table></div><p class="footnote">La stratégie vise au plus 20 % par produit au moment du calcul. Les variations de prix peuvent modifier ces parts.</p></section>
+    </div>
+    <section class="panel" aria-labelledby="decisions-title">
+      <h2 id="decisions-title">Journal des décisions produites</h2><p class="muted">Dernières demandes écrites par l’algorithme. Leur exécution effective par le marché n’est pas confirmée ici.</p>
+      <div class="table-wrap"><table><thead><tr><th>Date de calcul</th><th>Produit</th><th>Demande</th><th>Quantité demandée</th><th>Raison</th></tr></thead><tbody id="decisions"></tbody></table></div>
+    </section>
+    <footer><p>Données publiques de l’organisateur. Actualisation automatique toutes les 5 minutes, tant que cette page est ouverte.</p><p><a id="market-source" target="_blank" rel="noopener">Prix du marché</a> · <a id="holdings-source" target="_blank" rel="noopener">Portefeuille</a> · <a id="ranking-source" target="_blank" rel="noopener">Classement officiel</a></p><p>Le suivi historique commence avec les enregistrements de ton algorithme. Aucune donnée de portefeuille n’est simulée dans ce dashboard.</p></footer>
+  </main>
 </body>
 </html>

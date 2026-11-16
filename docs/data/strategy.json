@@ -1,0 +1,6 @@
+{
+  "window": 20,
+  "entry_standard_deviations": 1.0,
+  "max_product_weight": 0.2,
+  "reserve": 50
+}

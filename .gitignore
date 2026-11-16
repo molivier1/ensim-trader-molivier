@@ -1,0 +1,4 @@
+# Previous experiments kept locally; not part of the TP deliverables.
+.local-experiments/
+__pycache__/
+*.pyc

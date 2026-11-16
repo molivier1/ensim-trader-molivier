@@ -1,45 +1,54 @@
 import json, time
+import math
+import statistics
 import requests
 
 # Fill these in with the URLs the organizer gave you when they registered you:
 MARKET_URL = "https://raw.githubusercontent.com/exofri/ensim-trade-center/refs/heads/main/docs/data/market.json"
-HOLDINGS_URL = "http://raw.githubusercontent.com/exofri/ensim-trade-center/refs/heads/main/traders/molivier/holdings.json"
+HOLDINGS_URL = "https://raw.githubusercontent.com/exofri/ensim-trade-center/refs/heads/main/traders/molivier/holdings.json"
 
 MIN_MONEY_RESERVE = 50 # never let a buy signal spend below this much money
 
-# Initial strategy parameters; validate them with a historical simulation.
-SHORT_WINDOW = 5
-LONG_WINDOW = 20
-TREND_THRESHOLD = 0.01  # ignore gaps smaller than 1% of the long average
-TRADE_SIGNAL = 0.1  # request 10 units per market tick before budget constraints
+# Modeling choices to explain in the report, not parameters supplied by the TP.
+SIGNAL_WINDOW = 20
+ENTRY_STANDARD_DEVIATIONS = 1.0
+MAX_PRODUCT_WEIGHT = 0.20
 
 def fetch_json(url):
     resp = requests.get(url, proxies={"http": None, "https": None}, timeout=(10, 20))
     resp.raise_for_status()
     return resp.json()
 
-def compute_signal(prices):
+def compute_signal(prices, owned_units, portfolio_value):
     """
-    Follow the trend using the last 5 and 20 observed prices.
+    Return a demand in [-1, 1] from observed prices and current holdings.
 
-    Return +0.1 (buy), -0.1 (sell), or 0.0 (hold). A relative gap
-    of at least 1% is required to trade. Windows count observations,
-    not days. Only the supplied history is used, never future prices.
+    The manual permits adding holdings context to compute_signal. Buy below
+    the 20-observation mean minus one standard deviation, aiming for 20% of
+    portfolio value. Exit at the mean. Otherwise keep the current position,
+    reducing it if above the target cap. The budget guard is applied by main.
     """
-    if len(prices) < LONG_WINDOW:
+    if len(prices) < SIGNAL_WINDOW:
         return 0.0
 
-    short_average = sum(prices[-SHORT_WINDOW:]) / SHORT_WINDOW
-    long_average = sum(prices[-LONG_WINDOW:]) / LONG_WINDOW
-    if long_average <= 0:
-        return 0.0
+    recent_prices = prices[-SIGNAL_WINDOW:]
+    mean = statistics.mean(recent_prices)
+    deviation = statistics.pstdev(recent_prices)
+    current_price = prices[-1]
+    target_cap = MAX_PRODUCT_WEIGHT * portfolio_value
+    current_value = owned_units * current_price
 
-    relative_gap = (short_average - long_average) / long_average
-    if relative_gap >= TREND_THRESHOLD:
-        return TRADE_SIGNAL
-    if relative_gap <= -TREND_THRESHOLD:
-        return -TRADE_SIGNAL
-    return 0.0
+    if deviation > 0 and current_price <= mean - ENTRY_STANDARD_DEVIATIONS * deviation:
+        target_value = target_cap
+    elif current_price >= mean:
+        target_value = 0.0
+    else:
+        target_value = min(current_value, target_cap)
+
+    desired_units = target_value / current_price - owned_units
+    raw_signal = max(-1.0, min(1.0, desired_units / 100))
+    # Round toward zero so precision cannot request more stock than is held.
+    return math.copysign(math.floor(abs(raw_signal) * 1000 + 1e-9) / 1000, raw_signal)
 
 def apply_budget_guard(raw_signal, money, price, reserve=MIN_MONEY_RESERVE):
     # A buy signal (positive) that would spend into the reserve gets scaled down,
@@ -61,10 +70,14 @@ def main():
     products = market["products"]
     history = market["history"]
 
+    portfolio_value = holdings["money"] + sum(
+        holdings["products"].get(p, 0) * history[-1][p] for p in products
+    ) if history else holdings["money"]
+
     decision = {}
     for p in products:
         prices = [row[p] for row in history]
-        raw = compute_signal(prices)
+        raw = compute_signal(prices, holdings["products"].get(p, 0), portfolio_value)
         current_price = prices[-1] if prices else 0
         decision[p] = round(apply_budget_guard(raw, holdings["money"], current_price), 3)
 

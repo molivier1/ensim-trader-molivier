@@ -1,3 +1,20 @@
 {
-  "snapshots": []
+  "snapshots": [
+    {
+      "market_timestamp": "2026-11-20T22:54:23Z",
+      "observed_at": "2026-11-20T23:17:24Z",
+      "money": 1000.0,
+      "products": {
+        "A": 1000.0,
+        "B": 1000.0,
+        "C": 1000.0
+      },
+      "total_value": 18590.100000000002,
+      "baselines": {
+        "random_trader": 18799.91,
+        "random_buyer": 18487.5,
+        "random_seller": 18005.8
+      }
+    }
+  ]
 }

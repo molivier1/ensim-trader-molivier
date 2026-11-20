@@ -1,3 +1,18 @@
 {
-  "decisions": []
+  "decisions": [
+    {
+      "updated_at": "2026-11-20T23:17:24Z",
+      "market_timestamp": "2026-11-20T22:54:23Z",
+      "signals": {
+        "A": -1.0,
+        "B": -1.0,
+        "C": 0.0
+      },
+      "reasons": {
+        "A": "Prix sous le seuil : viser 20% du portefeuille. Réduire la part supérieure à la cible.",
+        "B": "Prix revenu à la moyenne : sortir de la position. Réduire la part supérieure à la cible.",
+        "C": "Prix entre seuil et moyenne : conserver sans renforcer."
+      }
+    }
+  ]
 }

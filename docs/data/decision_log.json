@@ -97,6 +97,20 @@
         "B": "Prix revenu à la moyenne : sortir de la position. Réduire la part supérieure à la cible.",
         "C": "Prix sous le seuil : viser 20% du portefeuille."
       }
+    },
+    {
+      "updated_at": "2026-11-22T21:36:07Z",
+      "market_timestamp": "2026-11-22T20:11:55Z",
+      "signals": {
+        "A": 0.091,
+        "B": -1.0,
+        "C": 1.0
+      },
+      "reasons": {
+        "A": "Prix sous le seuil : viser 20% du portefeuille.",
+        "B": "Prix revenu à la moyenne : sortir de la position.",
+        "C": "Prix sous le seuil : viser 20% du portefeuille."
+      }
     }
   ]
 }

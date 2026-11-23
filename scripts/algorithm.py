@@ -16,7 +16,7 @@ SIGNAL_WINDOW = 60
 ENTRY_QUANTILE = 0.20
 EXIT_QUANTILE = 0.80
 A_TARGET_WEIGHT = 0.30
-B_TARGET_WEIGHT = 0.35
+B_TARGET_WEIGHT = 0.20
 
 def fetch_json(url):
     resp = requests.get(url, proxies={"http": None, "https": None}, timeout=(10, 20))
@@ -50,7 +50,7 @@ def compute_signal(product, prices, owned_units, portfolio_value):
             return 0.0, "A : entre les seuils, conserver la position."
     elif product == "B":
         target = B_TARGET_WEIGHT * portfolio_value / price
-        reason = "B : ajuster progressivement vers 35 % du portefeuille."
+        reason = f"B : ajuster progressivement vers {B_TARGET_WEIGHT:.0%} du portefeuille."
     elif product == "C":
         target = 0.0
         reason = "C : réduire progressivement la position, sans nouvel achat."

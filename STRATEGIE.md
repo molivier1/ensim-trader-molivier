@@ -15,7 +15,7 @@ Les seuils évoluent avec les prix : un prix bas ne garantit pas que A remontera
 
 ## B : conserver une position de fond
 
-B a présenté une tendance globalement haussière, malgré des baisses temporaires. La stratégie ajuste progressivement sa position vers **35 %** du portefeuille : elle achète si elle est en dessous de cette cible et vend si elle est au-dessus.
+B a présenté une tendance globalement haussière, malgré des baisses temporaires. La stratégie ajuste progressivement sa position vers **20 %** du portefeuille : elle achète si elle est en dessous de cette cible et vend si elle est au-dessus.
 
 Cette règle ne détecte pas un retournement durable : si B baisse, elle peut continuer à acheter pour revenir à sa cible. Aucun filtre de tendance ou stop automatique n'est appliqué. La tendance historique ne garantit pas une hausse future.
 

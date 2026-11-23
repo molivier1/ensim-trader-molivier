@@ -139,6 +139,20 @@
         "B": "Prix revenu à la moyenne : sortir de la position.",
         "C": "Prix entre seuil et moyenne : conserver sans renforcer."
       }
+    },
+    {
+      "updated_at": "2026-11-23T13:02:06Z",
+      "market_timestamp": "2026-11-23T10:06:02Z",
+      "signals": {
+        "A": 1.0,
+        "B": 1.0,
+        "C": -1.0
+      },
+      "reasons": {
+        "A": "A : zone basse, viser 30 % du portefeuille.",
+        "B": "B : ajuster progressivement vers 35 % du portefeuille.",
+        "C": "C : réduire progressivement la position, sans nouvel achat."
+      }
     }
   ]
 }

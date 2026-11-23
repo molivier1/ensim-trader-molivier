@@ -1,6 +1,5 @@
 import json, time
 import math
-import statistics
 from pathlib import Path
 import requests
 
@@ -10,48 +9,54 @@ HOLDINGS_URL = "https://raw.githubusercontent.com/exofri/ensim-trade-center/refs
 LEADERBOARD_URL = "https://raw.githubusercontent.com/exofri/ensim-trade-center/refs/heads/main/docs/data/leaderboard.json"
 DASHBOARD_DATA = Path(__file__).resolve().parents[1] / "docs" / "data"
 
-MIN_MONEY_RESERVE = 50 # never let a buy signal spend below this much money
+MIN_MONEY_RESERVE = 50
 
 # Modeling choices to explain in the report, not parameters supplied by the TP.
-SIGNAL_WINDOW = 20
-ENTRY_STANDARD_DEVIATIONS = 1.0
-MAX_PRODUCT_WEIGHT = 0.20
+SIGNAL_WINDOW = 60
+ENTRY_QUANTILE = 0.20
+EXIT_QUANTILE = 0.80
+A_TARGET_WEIGHT = 0.30
+B_TARGET_WEIGHT = 0.35
 
 def fetch_json(url):
     resp = requests.get(url, proxies={"http": None, "https": None}, timeout=(10, 20))
     resp.raise_for_status()
     return resp.json()
 
-def compute_signal(prices, owned_units, portfolio_value):
-    """
-    Return a demand in [-1, 1] from observed prices and current holdings.
+def round_signal(signal):
+    """Clip and round toward zero, without exceeding the desired quantity."""
+    signal = max(-1.0, min(1.0, signal))
+    return math.copysign(math.floor(abs(signal) * 1000 + 1e-9) / 1000, signal)
 
-    The manual permits adding holdings context to compute_signal. Buy below
-    the 20-observation mean minus one standard deviation, aiming for 20% of
-    portfolio value. Exit at the mean. Otherwise keep the current position,
-    reducing it if above the target cap. The budget guard is applied by main.
-    """
-    if len(prices) < SIGNAL_WINDOW:
-        return 0.0
-
-    recent_prices = prices[-SIGNAL_WINDOW:]
-    mean = statistics.mean(recent_prices)
-    deviation = statistics.pstdev(recent_prices)
-    current_price = prices[-1]
-    target_cap = MAX_PRODUCT_WEIGHT * portfolio_value
-    current_value = owned_units * current_price
-
-    if deviation > 0 and current_price <= mean - ENTRY_STANDARD_DEVIATIONS * deviation:
-        target_value = target_cap
-    elif current_price >= mean:
-        target_value = 0.0
+def compute_signal(product, prices, owned_units, portfolio_value):
+    if not prices or prices[-1] <= 0:
+        return 0.0, "Attente : prix indisponible."
+    price = prices[-1]
+    if product == "A":
+        if len(prices) < SIGNAL_WINDOW:
+            return 0.0, f"Attente : {len(prices)}/{SIGNAL_WINDOW} observations pour A."
+        recent = sorted(prices[-SIGNAL_WINDOW:])
+        low = recent[int(ENTRY_QUANTILE * (SIGNAL_WINDOW - 1))]
+        high = recent[int(EXIT_QUANTILE * (SIGNAL_WINDOW - 1))]
+        if low == high:
+            return 0.0, "A : seuils confondus, conserver la position."
+        if price <= low:
+            target = A_TARGET_WEIGHT * portfolio_value / price
+            reason = "A : zone basse, viser 30 % du portefeuille."
+        elif price >= high:
+            target = 0.0
+            reason = "A : zone haute, vendre progressivement."
+        else:
+            return 0.0, "A : entre les seuils, conserver la position."
+    elif product == "B":
+        target = B_TARGET_WEIGHT * portfolio_value / price
+        reason = "B : ajuster progressivement vers 35 % du portefeuille."
+    elif product == "C":
+        target = 0.0
+        reason = "C : réduire progressivement la position, sans nouvel achat."
     else:
-        target_value = min(current_value, target_cap)
-
-    desired_units = target_value / current_price - owned_units
-    raw_signal = max(-1.0, min(1.0, desired_units / 100))
-    # Round toward zero so precision cannot request more stock than is held.
-    return math.copysign(math.floor(abs(raw_signal) * 1000 + 1e-9) / 1000, raw_signal)
+        return 0.0, "Produit sans stratégie définie : conserver."
+    return round_signal((target - owned_units) / 100), reason
 
 def apply_budget_guard(raw_signal, money, price, reserve=MIN_MONEY_RESERVE):
     # A buy signal (positive) that would spend into the reserve gets scaled down,
@@ -65,26 +70,7 @@ def apply_budget_guard(raw_signal, money, price, reserve=MIN_MONEY_RESERVE):
     desired_units = 100 * raw_signal
     if desired_units <= max_affordable_units:
         return raw_signal
-    return round(max_affordable_units / 100, 3)
-
-def explain_signal(prices, owned_units, portfolio_value, raw, guarded):
-    """Explain the produced demand for the TP's decision log."""
-    if len(prices) < SIGNAL_WINDOW:
-        return f"Attente : {len(prices)}/{SIGNAL_WINDOW} observations."
-    recent = prices[-SIGNAL_WINDOW:]
-    mean = statistics.mean(recent)
-    deviation = statistics.pstdev(recent)
-    if deviation > 0 and prices[-1] <= mean - ENTRY_STANDARD_DEVIATIONS * deviation:
-        reason = f"Prix sous le seuil : viser {MAX_PRODUCT_WEIGHT:.0%} du portefeuille."
-    elif prices[-1] >= mean:
-        reason = "Prix revenu à la moyenne : sortir de la position."
-    else:
-        reason = "Prix entre seuil et moyenne : conserver sans renforcer."
-    if owned_units * prices[-1] > MAX_PRODUCT_WEIGHT * portfolio_value:
-        reason += " Réduire la part supérieure à la cible."
-    if raw != guarded:
-        reason += " Demande réduite par le garde-fou budgétaire."
-    return reason
+    return round_signal(max_affordable_units / 100)
 
 
 def save_dashboard_data(market, holdings, decision, reasons):
@@ -111,8 +97,9 @@ def save_dashboard_data(market, holdings, decision, reasons):
         temporary.replace(path)
 
     write_json("strategy.json", {"window": SIGNAL_WINDOW,
-               "entry_standard_deviations": ENTRY_STANDARD_DEVIATIONS,
-               "max_product_weight": MAX_PRODUCT_WEIGHT, "reserve": MIN_MONEY_RESERVE})
+               "entry_quantile": ENTRY_QUANTILE, "exit_quantile": EXIT_QUANTILE,
+               "a_target_weight": A_TARGET_WEIGHT, "b_target_weight": B_TARGET_WEIGHT,
+               "reserve": MIN_MONEY_RESERVE})
     decisions = read_records("decision_log.json", "decisions")
     entry = {"updated_at": decision["updated_at"],
              "market_timestamp": market["history"][-1]["timestamp"] if market["history"] else None,
@@ -149,9 +136,7 @@ def save_dashboard_data(market, holdings, decision, reasons):
     write_json("portfolio_history.json", {"snapshots": snapshots})
 
 
-def main():
-    market = fetch_json(MARKET_URL)
-    holdings = fetch_json(HOLDINGS_URL)
+def build_decisions(market, holdings):
     products = market["products"]
     history = market["history"]
 
@@ -161,12 +146,24 @@ def main():
 
     decision = {}
     reasons = {}
-    for p in products:
+    # Budget purchases together, without assuming any sale will execute.
+    remaining_money = holdings["money"]
+    for p in sorted(products):
         prices = [row[p] for row in history]
-        raw = compute_signal(prices, holdings["products"].get(p, 0), portfolio_value)
+        raw, reason = compute_signal(p, prices, holdings["products"].get(p, 0), portfolio_value)
         current_price = prices[-1] if prices else 0
-        decision[p] = round(apply_budget_guard(raw, holdings["money"], current_price), 3)
-        reasons[p] = explain_signal(prices, holdings["products"].get(p, 0), portfolio_value, raw, decision[p])
+        decision[p] = apply_budget_guard(raw, remaining_money, current_price)
+        if decision[p] > 0:
+            remaining_money -= 100 * decision[p] * current_price
+        if raw != decision[p]:
+            reason += " Achat réduit par le budget disponible et la réserve."
+        reasons[p] = reason
+    return decision, reasons
+
+def main():
+    market = fetch_json(MARKET_URL)
+    holdings = fetch_json(HOLDINGS_URL)
+    decision, reasons = build_decisions(market, holdings)
 
     decision["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with open("decision.json", "w") as f:

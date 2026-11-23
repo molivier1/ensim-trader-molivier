@@ -1,6 +1,8 @@
 {
-  "window": 20,
-  "entry_standard_deviations": 1.0,
-  "max_product_weight": 0.2,
+  "window": 60,
+  "entry_quantile": 0.2,
+  "exit_quantile": 0.8,
+  "a_target_weight": 0.3,
+  "b_target_weight": 0.35,
   "reserve": 50
 }

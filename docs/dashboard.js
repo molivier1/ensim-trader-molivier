@@ -116,13 +116,16 @@ function chart(id, points, series, title, unit = "") {
 function indicator(rows, product, index = rows.length - 1) {
   const window = state.config?.window;
   const price = rows[index]?.[product];
-  if (!window || index + 1 < window) return { price, mean: null, threshold: null, zone: window ? "Historique insuffisant" : "Configuration indisponible" };
-  const prices = rows.slice(index + 1 - window, index + 1).map(row => row[product]);
-  const mean = prices.reduce((sum, value) => sum + value, 0) / window;
-  const std = Math.sqrt(prices.reduce((sum, value) => sum + (value - mean) ** 2, 0) / window);
-  const threshold = mean - state.config.entry_standard_deviations * std;
-  const zone = std > 0 && price <= threshold ? "Zone d’achat" : price >= mean ? "Zone de sortie" : "Conserver sans renforcer";
-  return { price, mean, threshold, zone };
+  if (!window) return { price, low: null, high: null, zone: "Configuration indisponible" };
+  if (product === "B") return { price, low: null, high: null, zone: `Cible : ${number(state.config.b_target_weight * 100)} % du portefeuille` };
+  if (product === "C") return { price, low: null, high: null, zone: "Réduire la position sans acheter" };
+  if (product !== "A") return { price, low: null, high: null, zone: "Aucune stratégie définie" };
+  if (index + 1 < window) return { price, low: null, high: null, zone: "Historique insuffisant" };
+  const prices = rows.slice(index + 1 - window, index + 1).map(row => row[product]).sort((a, b) => a - b);
+  const low = prices[Math.floor(state.config.entry_quantile * (window - 1))];
+  const high = prices[Math.floor(state.config.exit_quantile * (window - 1))];
+  const zone = low === high ? "Conserver : seuils confondus" : price <= low ? `Zone basse : viser ${number(state.config.a_target_weight * 100)} %` : price >= high ? "Zone haute : vendre" : "Conserver la position";
+  return { price, low, high, zone };
 }
 
 function renderPrices() {
@@ -144,15 +147,16 @@ function renderPrices() {
     button.addEventListener("click", () => { selectedProduct = product; renderPrices(); });
     $("products").append(button);
     const item = indicator(market.history, product);
-    tableRow($("indicators"), [product, number(item.price), number(item.mean), number(item.threshold), item.zone]);
+    tableRow($("indicators"), [product, number(item.price), number(item.low), number(item.high), item.zone]);
   });
   const points = market.history.map((row, index) => {
     const item = indicator(market.history, selectedProduct, index);
-    return { timestamp: row.timestamp, price: item.price, mean: item.mean, threshold: item.threshold };
+    return { timestamp: row.timestamp, price: item.price, low: item.low, high: item.high };
   });
   const count = Number($("period").value);
-  const series = [{ key: "price", label: "Prix " + selectedProduct, color: "#315c86" }, { key: "mean", label: "Moyenne " + (state.config?.window ?? "—"), color: "#657a65", dashed: true }, { key: "threshold", label: "Seuil d’achat", color: "#b77b32", dashed: true }];
-  chart("price-chart", count ? points.slice(-count) : points, series, "Prix, moyenne récente et seuil d’achat du produit " + selectedProduct);
+  const series = [{ key: "price", label: "Prix " + selectedProduct, color: "#315c86" }];
+  if (selectedProduct === "A") series.push({ key: "low", label: "Seuil bas A", color: "#657a65", dashed: true }, { key: "high", label: "Seuil haut A", color: "#b77b32", dashed: true });
+  chart("price-chart", count ? points.slice(-count) : points, series, "Prix et seuils de stratégie du produit " + selectedProduct);
   legend("price-legend", series);
   $("market-time").textContent = `Dernier prix : ${date(market.history.at(-1)?.timestamp)} (heure de Paris). ${market.history.length} observations. La zone de prix seule ne détermine pas la quantité à demander : celle-ci dépend du portefeuille.`;
 }
@@ -263,7 +267,7 @@ async function refresh() {
   if (!Array.isArray(state.ranking?.leaderboard)) { state.ranking = null; messages.push("Classement officiel indisponible."); }
   if (!Array.isArray(state.history?.snapshots) || state.history.snapshots.some(row => !row || !Number.isFinite(row.total_value) || row.total_value < 0 || !Number.isFinite(Date.parse(row.market_timestamp)))) { state.history = null; messages.push("Historique de suivi indisponible ou invalide."); }
   if (!Array.isArray(state.decisions?.decisions) || state.decisions.decisions.some(row => !row || !row.signals || Object.values(row.signals).some(value => !Number.isFinite(value)))) { state.decisions = null; messages.push("Journal des décisions indisponible."); }
-  if (!Number.isInteger(state.config?.window) || state.config.window < 2 || !Number.isFinite(state.config.entry_standard_deviations)) { state.config = null; messages.push("Configuration des indicateurs indisponible."); }
+  if (!Number.isInteger(state.config?.window) || state.config.window < 2 || !Number.isFinite(state.config.entry_quantile) || !Number.isFinite(state.config.exit_quantile) || state.config.entry_quantile < 0 || state.config.exit_quantile > 1 || state.config.entry_quantile >= state.config.exit_quantile || !Number.isFinite(state.config.a_target_weight) || !Number.isFinite(state.config.b_target_weight)) { state.config = null; messages.push("Configuration des indicateurs indisponible."); }
   if (location.protocol === "file:") messages.push("Pour charger les fichiers de suivi, ouvrir cette page via un serveur local ou GitHub Pages.");
   $("status").textContent = messages.length ? messages.join("\n") : "Flux chargés. Les valeurs affichées proviennent des données réelles disponibles.";
   $("status").classList.toggle("warning", messages.length > 0);

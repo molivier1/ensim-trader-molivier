@@ -22,9 +22,9 @@
     </section>
     <section class="panel" aria-labelledby="prices-title">
       <div class="section-heading"><h2 id="prices-title">Prix et indicateurs</h2><div class="controls"><div id="products" class="tabs" aria-label="Produit affiché"></div><label>Période <select id="period"><option value="60">60 dernières observations</option><option value="0">Tout l’historique</option></select></label></div></div>
-      <p class="muted">Le seuil d’achat est la moyenne sur 20 observations moins un écart-type. Un prix bas ne garantit pas une remontée.</p>
+      <p class="muted">Pour A, les seuils bas et haut correspondent aux 20 % et 80 % de prix sur les 60 dernières observations. B vise une position de fond ; C est progressivement vendu.</p>
       <div id="price-chart" class="chart"></div><div id="price-legend" class="legend"></div>
-      <div class="table-wrap"><table><caption class="sr-only">Indicateurs actuels par produit</caption><thead><tr><th>Produit</th><th>Dernier prix</th><th>Moyenne 20</th><th>Seuil d’achat</th><th>Lecture de l’indicateur</th></tr></thead><tbody id="indicators"></tbody></table></div>
+      <div class="table-wrap"><table><caption class="sr-only">Indicateurs actuels par produit</caption><thead><tr><th>Produit</th><th>Dernier prix</th><th>Seuil bas A</th><th>Seuil haut A</th><th>Lecture de la stratégie</th></tr></thead><tbody id="indicators"></tbody></table></div>
       <p id="market-time" class="footnote"></p>
     </section>
     <section class="panel" aria-labelledby="performance-title">
@@ -36,7 +36,7 @@
     </section>
     <div class="two-columns">
       <section class="panel" aria-labelledby="risk-title"><h2 id="risk-title">Risque : baisse depuis un sommet</h2><p class="muted">0 % correspond à un sommet. Une valeur plus élevée indique une perte plus importante depuis ce sommet.</p><div id="risk-chart" class="chart compact"></div><p id="risk-note" class="footnote"></p></section>
-      <section class="panel" aria-labelledby="holdings-title"><h2 id="holdings-title">Répartition du portefeuille</h2><div class="table-wrap"><table><thead><tr><th>Produit</th><th>Quantité</th><th>Valeur</th><th>Part</th></tr></thead><tbody id="holdings"></tbody></table></div><p class="footnote">La stratégie vise au plus 20 % par produit au moment du calcul. Les variations de prix peuvent modifier ces parts.</p></section>
+      <section class="panel" aria-labelledby="holdings-title"><h2 id="holdings-title">Répartition du portefeuille</h2><div class="table-wrap"><table><thead><tr><th>Produit</th><th>Quantité</th><th>Valeur</th><th>Part</th></tr></thead><tbody id="holdings"></tbody></table></div><p class="footnote">Cibles : 30 % pour A en zone basse, 35 % pour B et sortie progressive de C. Les prix et la limite par ordre font varier les parts effectives.</p></section>
     </div>
     <section class="panel" aria-labelledby="decisions-title">
       <h2 id="decisions-title">Journal des décisions produites</h2><p class="muted">Dernières demandes écrites par l’algorithme. Leur exécution effective par le marché n’est pas confirmée ici.</p>

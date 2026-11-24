@@ -191,6 +191,22 @@
         "random_trader": 18072.1,
         "random_seller": 18005.8
       }
+    },
+    {
+      "market_timestamp": "2026-11-24T18:32:16Z",
+      "observed_at": "2026-11-24T18:42:02Z",
+      "money": 7343.781729622525,
+      "products": {
+        "A": 1441.1999999999998,
+        "B": 294.2000000000001,
+        "C": 1200.0
+      },
+      "total_value": 19143.477789622524,
+      "baselines": {
+        "random_buyer": 19350.31,
+        "random_trader": 18720.41,
+        "random_seller": 18005.8
+      }
     }
   ]
 }

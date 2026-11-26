@@ -251,6 +251,20 @@
         "B": "B : ajuster progressivement vers 20% du portefeuille.",
         "C": "C : réduire progressivement la position, sans nouvel achat."
       }
+    },
+    {
+      "updated_at": "2026-11-26T04:16:56Z",
+      "market_timestamp": "2026-11-26T03:52:50Z",
+      "signals": {
+        "A": 0.0,
+        "B": -0.0,
+        "C": -1.0
+      },
+      "reasons": {
+        "A": "A : entre les seuils, conserver la position.",
+        "B": "B : ajuster progressivement vers 20% du portefeuille.",
+        "C": "C : réduire progressivement la position, sans nouvel achat."
+      }
     }
   ]
 }

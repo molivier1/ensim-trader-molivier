@@ -321,6 +321,20 @@
         "B": "B : conserver la position, sans achat ni vente.",
         "C": "C : réduire progressivement la position, sans nouvel achat."
       }
+    },
+    {
+      "updated_at": "2026-11-26T16:30:20Z",
+      "market_timestamp": "2026-11-26T13:46:31Z",
+      "signals": {
+        "A": -1.0,
+        "B": 0.0,
+        "C": -1.0
+      },
+      "reasons": {
+        "A": "A : alléger progressivement la position vers 1 000 unités.",
+        "B": "B : conserver la position, sans achat ni vente.",
+        "C": "C : réduire progressivement la position, sans nouvel achat."
+      }
     }
   ]
 }

@@ -139,12 +139,12 @@ function solveSystem(matrix, vector) {
 
 // Fit a sinusoid plus a linear trend in tick space, selecting the period
 // that best fits the latest observations. This is not the market's model.
-function cycleProjection(prices, horizon = 5) {
-  const recent = prices.slice(-100);
+function cycleProjection(prices) {
+  const recent = prices.slice(-240);
   const n = recent.length;
-  if (n < 36) return null;
+  if (n < 160) return null;
   let best = null;
-  for (let period = 12; period <= Math.min(80, Math.floor(n * 0.8)); period++) {
+  for (let period = 12; period <= Math.min(160, Math.floor(n * 0.6)); period++) {
     const features = i => [1, i / (n - 1), Math.sin(2 * Math.PI * i / period), Math.cos(2 * Math.PI * i / period)];
     const matrix = Array.from({ length: 4 }, () => Array(4).fill(0));
     const vector = Array(4).fill(0);
@@ -163,6 +163,8 @@ function cycleProjection(prices, horizon = 5) {
   }
   if (!best) return null;
   const current = recent.at(-1), anchor = best.predict(n - 1);
+  // Show at least one full estimated cycle, including the next peak if present.
+  const horizon = Math.min(200, Math.ceil(best.period * 1.25));
   return { period: best.period, values: Array.from({ length: horizon }, (_, i) => Math.max(0.01, current + best.predict(n + i) - anchor)) };
 }
 
@@ -171,7 +173,7 @@ function priceChart(points, projection, series, title) {
   if (points.length < 2) { emptyChart("price-chart", "Au moins deux observations sont nécessaires pour afficher une courbe."); return; }
   const width = Math.max(300, Math.min(1000, $("price-chart").clientWidth));
   const height = 275, left = 65, right = width - 20, top = 20, bottom = height - 35;
-  const boundary = projection ? left + (right - left) * 0.73 : right;
+  const boundary = projection ? left + (right - left) * (points.length - 1) / (points.length - 1 + projection.values.length) : right;
   const pastX = i => left + i / (points.length - 1) * (boundary - left);
   const futureX = i => boundary + i / projection.values.length * (right - boundary);
   const allValues = points.flatMap(point => series.map(item => point[item.key])).filter(Number.isFinite);
@@ -190,7 +192,7 @@ function priceChart(points, projection, series, title) {
   }
   const mid = Math.floor((points.length - 1) / 2);
   [[0, "start"], [mid, "middle"]].forEach(([i, anchor]) => svg.append(svgNode("text", { x: pastX(i), y: height - 10, "text-anchor": anchor, fill: "#596774", "font-size": 11 }, date(points[i].timestamp, true))));
-  svg.append(svgNode("text", { x: projection ? right : boundary, y: height - 10, "text-anchor": "end", fill: "#596774", "font-size": 11 }, projection ? "+5 ticks" : date(points.at(-1).timestamp, true)));
+  svg.append(svgNode("text", { x: projection ? right : boundary, y: height - 10, "text-anchor": "end", fill: "#596774", "font-size": 11 }, projection ? `+${projection.values.length} ticks` : date(points.at(-1).timestamp, true)));
   if (projection) {
     svg.append(svgNode("line", { x1: boundary, x2: boundary, y1: top, y2: bottom, stroke: "#687987", "stroke-dasharray": "4 4" }));
     svg.append(svgNode("text", { x: (boundary + right) / 2, y: top + 13, "text-anchor": "middle", fill: "#596774", "font-size": 10 }, "Estimations"));
@@ -257,11 +259,11 @@ function renderPrices() {
   const series = [{ key: "price", label: "Prix " + selectedProduct, color: "#315c86" }];
   if (selectedProduct === "A") series.push({ key: "low", label: "Seuil bas A", color: "#657a65", dashed: true }, { key: "high", label: "Seuil haut A", color: "#b77b32", dashed: true });
   const projection = cycleProjection(market.history.map(row => row[selectedProduct]));
-  priceChart(count ? points.slice(-count) : points, projection, series, "Prix observés et estimation des cinq prochains ticks du produit " + selectedProduct);
-  legend("price-legend", projection ? [...series, { key: "forecast", label: "Estimation (+5 ticks)", color: "#a45e35", dashed: true }] : series);
+  priceChart(count ? points.slice(-count) : points, projection, series, "Prix observés et cycle estimé du produit " + selectedProduct);
+  legend("price-legend", projection ? [...series, { key: "forecast", label: `Estimation (+${projection.values.length} ticks)`, color: "#a45e35", dashed: true }] : series);
   $("projection-note").textContent = projection
-    ? `Après la ligne verticale : estimation sur 5 ticks, issue d’une sinusoïde et d’une tendance ajustées aux 100 derniers prix au maximum (cycle estimé : ${projection.period} ticks). La zone projetée est élargie pour faciliter sa lecture ; aucune heure future n’est supposée. Cette estimation n’est pas une prévision garantie.`
-    : "La projection nécessite au moins 36 observations. Les ticks sont espacés uniformément sur ce graphique.";
+    ? `Après la ligne verticale : estimation sur ${projection.values.length} ticks, issue d’une sinusoïde et d’une tendance ajustées aux 240 derniers prix au maximum (cycle estimé : ${projection.period} ticks). Les ticks sont régulièrement espacés sur le graphique, sans estimer leur heure réelle. L’évolution et les sommets futurs restent incertains.`
+    : "La projection nécessite au moins 160 observations. Les ticks sont régulièrement espacés sur le graphique.";
   $("market-time").textContent = `Dernier prix : ${date(market.history.at(-1)?.timestamp)} (heure de Paris). ${market.history.length} observations. La zone de prix seule ne détermine pas la quantité à demander : celle-ci dépend du portefeuille.`;
 }
 

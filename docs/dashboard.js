@@ -117,7 +117,7 @@ function indicator(rows, product, index = rows.length - 1) {
   const window = state.config?.window;
   const price = rows[index]?.[product];
   if (!window) return { price, low: null, high: null, zone: "Configuration indisponible" };
-  if (product === "B") return { price, low: null, high: null, zone: `Cible : ${number(state.config.b_target_weight * 100)} % du portefeuille` };
+  if (product === "B") return { price, low: null, high: null, zone: state.config.b_mode === "hold" ? "Conserver sans achat ni vente" : `Cible : ${number(state.config.b_target_weight * 100)} % du portefeuille` };
   if (product === "C") return { price, low: null, high: null, zone: "Réduire la position sans acheter" };
   if (product !== "A") return { price, low: null, high: null, zone: "Aucune stratégie définie" };
   if (index + 1 < window) return { price, low: null, high: null, zone: "Historique insuffisant" };
@@ -267,7 +267,7 @@ async function refresh() {
   if (!Array.isArray(state.ranking?.leaderboard)) { state.ranking = null; messages.push("Classement officiel indisponible."); }
   if (!Array.isArray(state.history?.snapshots) || state.history.snapshots.some(row => !row || !Number.isFinite(row.total_value) || row.total_value < 0 || !Number.isFinite(Date.parse(row.market_timestamp)))) { state.history = null; messages.push("Historique de suivi indisponible ou invalide."); }
   if (!Array.isArray(state.decisions?.decisions) || state.decisions.decisions.some(row => !row || !row.signals || Object.values(row.signals).some(value => !Number.isFinite(value)))) { state.decisions = null; messages.push("Journal des décisions indisponible."); }
-  if (!Number.isInteger(state.config?.window) || state.config.window < 2 || !Number.isFinite(state.config.entry_quantile) || !Number.isFinite(state.config.exit_quantile) || state.config.entry_quantile < 0 || state.config.exit_quantile > 1 || state.config.entry_quantile >= state.config.exit_quantile || !Number.isFinite(state.config.a_target_weight) || !Number.isFinite(state.config.b_target_weight)) { state.config = null; messages.push("Configuration des indicateurs indisponible."); }
+  if (!Number.isInteger(state.config?.window) || state.config.window < 2 || !Number.isFinite(state.config.entry_quantile) || !Number.isFinite(state.config.exit_quantile) || state.config.entry_quantile < 0 || state.config.exit_quantile > 1 || state.config.entry_quantile >= state.config.exit_quantile || !Number.isFinite(state.config.a_target_weight) || !(state.config.b_mode === "hold" || Number.isFinite(state.config.b_target_weight))) { state.config = null; messages.push("Configuration des indicateurs indisponible."); }
   if (location.protocol === "file:") messages.push("Pour charger les fichiers de suivi, ouvrir cette page via un serveur local ou GitHub Pages.");
   $("status").textContent = messages.length ? messages.join("\n") : "Flux chargés. Les valeurs affichées proviennent des données réelles disponibles.";
   $("status").classList.toggle("warning", messages.length > 0);

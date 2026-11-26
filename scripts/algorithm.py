@@ -16,7 +16,6 @@ SIGNAL_WINDOW = 60
 ENTRY_QUANTILE = 0.20
 EXIT_QUANTILE = 0.80
 A_TARGET_WEIGHT = 0.30
-B_TARGET_WEIGHT = 0.20
 
 def fetch_json(url):
     resp = requests.get(url, proxies={"http": None, "https": None}, timeout=(10, 20))
@@ -49,8 +48,7 @@ def compute_signal(product, prices, owned_units, portfolio_value):
         else:
             return 0.0, "A : entre les seuils, conserver la position."
     elif product == "B":
-        target = B_TARGET_WEIGHT * portfolio_value / price
-        reason = f"B : ajuster progressivement vers {B_TARGET_WEIGHT:.0%} du portefeuille."
+        return 0.0, "B : conserver la position, sans achat ni vente."
     elif product == "C":
         target = 0.0
         reason = "C : réduire progressivement la position, sans nouvel achat."
@@ -98,7 +96,7 @@ def save_dashboard_data(market, holdings, decision, reasons):
 
     write_json("strategy.json", {"window": SIGNAL_WINDOW,
                "entry_quantile": ENTRY_QUANTILE, "exit_quantile": EXIT_QUANTILE,
-               "a_target_weight": A_TARGET_WEIGHT, "b_target_weight": B_TARGET_WEIGHT,
+               "a_target_weight": A_TARGET_WEIGHT, "b_mode": "hold",
                "reserve": MIN_MONEY_RESERVE})
     decisions = read_records("decision_log.json", "decisions")
     entry = {"updated_at": decision["updated_at"],

@@ -15,9 +15,9 @@ Les seuils évoluent avec les prix : un prix bas ne garantit pas que A remontera
 
 ## B : conserver une position de fond
 
-B a présenté une tendance globalement haussière, malgré des baisses temporaires. La stratégie ajuste progressivement sa position vers **20 %** du portefeuille : elle achète si elle est en dessous de cette cible et vend si elle est au-dessus.
+B est conservé **sans nouvel achat ni vente** pour le moment. Le signal reste à zéro quelle que soit sa part dans le portefeuille : il n'y a plus de rééquilibrage vers 20 %.
 
-Cette règle ne détecte pas un retournement durable : si B baisse, elle peut continuer à acheter pour revenir à sa cible. Aucun filtre de tendance ou stop automatique n'est appliqué. La tendance historique ne garantit pas une hausse future.
+Si B baisse, la position détenue perd de la valeur. Aucun filtre de tendance ou stop automatique n'est appliqué : cette règle ne vend pas même si B dépasse 20 % du portefeuille ou si son prix baisse fortement.
 
 ## C : réduire la position
 
@@ -27,6 +27,6 @@ La tendance historique de C est baissière. La stratégie ne fait aucun nouvel a
 
 Chaque demande est limitée à 100 unités par produit et par tick. Atteindre une cible ou vendre une grande position peut donc prendre plusieurs ticks. Le signal représente une demande, pas une transaction confirmée : par exemple, `1` demande l'achat de 100 unités et `-1` leur vente.
 
-Les achats de A et B partagent le même budget, calculé dans l'ordre des produits, en gardant une réserve de 50 au prix connu lors du calcul. Les ventes prévues ne sont pas comptées dans ce budget. Le marché exécute toutefois les ordres à son nouveau prix : si les prix montent entre le calcul et l'exécution, la réserve de 50 n'est pas garantie. Les parts effectives peuvent également changer avec les prix et la limite de 100 unités.
+Les achats sont limités par le cash disponible, en gardant une réserve de 50 au prix connu lors du calcul. Les ventes prévues ne sont pas comptées dans ce budget. Le marché exécute toutefois les ordres à son nouveau prix : si les prix montent entre le calcul et l'exécution, la réserve de 50 n'est pas garantie. Les parts effectives peuvent également changer avec les prix et la limite de 100 unités.
 
 Le workflow prévu toutes les 30 minutes recalcule les demandes et met à jour le journal. Le marché peut réutiliser la dernière demande si le workflow prend du retard : une demande ancienne peut donc être exécutée à nouveau. Le tableau de bord montre les demandes générées, sans confirmer leur exécution.

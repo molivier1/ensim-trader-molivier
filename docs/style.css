@@ -10,7 +10,7 @@ p { line-height: 1.5; margin: 8px 0; }
 .eyebrow { color: #526579; font-size: .82rem; margin: 0; }
 .muted, small, .footnote, footer { color: #596774; }
 .refresh { text-align: right; font-size: .8rem; }
-button, select { font: inherit; border: 1px solid #bfc9d1; background: white; border-radius: 4px; padding: 8px 12px; color: #24313d; }
+button, select, input { font: inherit; border: 1px solid #bfc9d1; background: white; border-radius: 4px; padding: 8px 12px; color: #24313d; }
 button { cursor: pointer; }
 button:hover { background: #edf2f6; }
 button:disabled { cursor: wait; opacity: .65; }
@@ -28,6 +28,7 @@ button:disabled { cursor: wait; opacity: .65; }
 .controls { flex-wrap: wrap; justify-content: flex-end; font-size: .8rem; max-width: 100%; min-width: 0; }
 .controls label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; max-width: 100%; }
 .controls select { max-width: 100%; }
+.controls input[type="number"] { width: 76px; max-width: 100%; }
 .tabs { display: flex; gap: 4px; }
 .tabs button { padding: 7px 13px; }
 .tabs button[aria-pressed="true"] { background: #334f69; color: white; border-color: #334f69; }

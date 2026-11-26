@@ -139,7 +139,7 @@ function solveSystem(matrix, vector) {
 
 // Fit a sinusoid plus a linear trend in tick space, selecting the period
 // that best fits the latest observations. This is not the market's model.
-function cycleProjection(prices) {
+function cycleProjection(prices, horizon = 20) {
   const recent = prices.slice(-240);
   const n = recent.length;
   if (n < 160) return null;
@@ -163,8 +163,6 @@ function cycleProjection(prices) {
   }
   if (!best) return null;
   const current = recent.at(-1), anchor = best.predict(n - 1);
-  // Show at least one full estimated cycle, including the next peak if present.
-  const horizon = Math.min(200, Math.ceil(best.period * 1.25));
   return { period: best.period, values: Array.from({ length: horizon }, (_, i) => Math.max(0.01, current + best.predict(n + i) - anchor)) };
 }
 
@@ -258,7 +256,10 @@ function renderPrices() {
   const count = Number($("period").value);
   const series = [{ key: "price", label: "Prix " + selectedProduct, color: "#315c86" }];
   if (selectedProduct === "A") series.push({ key: "low", label: "Seuil bas A", color: "#657a65", dashed: true }, { key: "high", label: "Seuil haut A", color: "#b77b32", dashed: true });
-  const projection = cycleProjection(market.history.map(row => row[selectedProduct]));
+  const requestedHorizon = Number($("projection-horizon").value);
+  const horizon = Number.isFinite(requestedHorizon) && requestedHorizon >= 1 ? Math.min(200, Math.floor(requestedHorizon)) : 20;
+  $("projection-horizon").value = String(horizon);
+  const projection = cycleProjection(market.history.map(row => row[selectedProduct]), horizon);
   priceChart(count ? points.slice(-count) : points, projection, series, "Prix observés et cycle estimé du produit " + selectedProduct);
   legend("price-legend", projection ? [...series, { key: "forecast", label: `Estimation (+${projection.values.length} ticks)`, color: "#a45e35", dashed: true }] : series);
   $("projection-note").textContent = projection
@@ -410,6 +411,7 @@ $("holdings-source").href = URLS.holdings;
 $("ranking-source").href = URLS.ranking;
 $("refresh").addEventListener("click", refresh);
 $("period").addEventListener("change", renderPrices);
+$("projection-horizon").addEventListener("change", renderPrices);
 $("decision-product").addEventListener("change", () => { decisionPage = 1; renderDecisions(); });
 $("decision-sort").addEventListener("change", () => { decisionPage = 1; renderDecisions(); });
 $("decision-prev").addEventListener("click", () => { decisionPage--; renderDecisions(); });

@@ -21,7 +21,6 @@ const BASELINES = [
 ];
 const $ = id => document.getElementById(id);
 const number = value => Number.isFinite(value) ? value.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) : "—";
-const priceNumber = value => Number.isFinite(value) ? value.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : "—";
 const percent = value => Number.isFinite(value) ? number(value) + " %" : "—";
 const date = (value, short = false) => {
   const parsed = new Date(value);
@@ -45,6 +44,7 @@ function tableRow(body, values) {
   const row = element("tr");
   values.forEach(value => row.append(element("td", value)));
   body.append(row);
+  return row;
 }
 function emptyTable(id, columns, message) {
   const body = $(id);
@@ -63,7 +63,10 @@ function legend(id, series) {
   series.forEach(item => {
     const entry = element("span");
     const swatch = element("i");
-    swatch.style.background = item.color;
+    if (item.dashed) {
+      swatch.style.background = "none";
+      swatch.style.borderTop = `2px dashed ${item.color}`;
+    } else swatch.style.background = item.color;
     entry.append(swatch, document.createTextNode(item.label));
     $(id).append(entry);
   });
@@ -116,6 +119,99 @@ function chart(id, points, series, title, unit = "") {
   $(id).replaceChildren(svg);
 }
 
+// Solve a four-variable least-squares system with partial pivoting.
+function solveSystem(matrix, vector) {
+  const rows = matrix.map((row, index) => [...row, vector[index]]);
+  for (let column = 0; column < 4; column++) {
+    let pivot = column;
+    for (let row = column + 1; row < 4; row++) if (Math.abs(rows[row][column]) > Math.abs(rows[pivot][column])) pivot = row;
+    if (Math.abs(rows[pivot][column]) < 1e-10) return null;
+    [rows[column], rows[pivot]] = [rows[pivot], rows[column]];
+    const divisor = rows[column][column];
+    for (let j = column; j < 5; j++) rows[column][j] /= divisor;
+    for (let row = 0; row < 4; row++) if (row !== column) {
+      const factor = rows[row][column];
+      for (let j = column; j < 5; j++) rows[row][j] -= factor * rows[column][j];
+    }
+  }
+  return rows.map(row => row[4]);
+}
+
+// Fit a sinusoid plus a linear trend in tick space, selecting the period
+// that best fits the latest observations. This is not the market's model.
+function cycleProjection(prices, horizon = 5) {
+  const recent = prices.slice(-100);
+  const n = recent.length;
+  if (n < 36) return null;
+  let best = null;
+  for (let period = 12; period <= Math.min(80, Math.floor(n * 0.8)); period++) {
+    const features = i => [1, i / (n - 1), Math.sin(2 * Math.PI * i / period), Math.cos(2 * Math.PI * i / period)];
+    const matrix = Array.from({ length: 4 }, () => Array(4).fill(0));
+    const vector = Array(4).fill(0);
+    recent.forEach((price, i) => {
+      const f = features(i);
+      for (let j = 0; j < 4; j++) {
+        vector[j] += f[j] * price;
+        for (let k = 0; k < 4; k++) matrix[j][k] += f[j] * f[k];
+      }
+    });
+    const coefficients = solveSystem(matrix, vector);
+    if (!coefficients) continue;
+    const predict = i => features(i).reduce((sum, value, j) => sum + value * coefficients[j], 0);
+    const error = recent.reduce((sum, price, i) => sum + (price - predict(i)) ** 2, 0);
+    if (!best || error < best.error) best = { period, error, predict };
+  }
+  if (!best) return null;
+  const current = recent.at(-1), anchor = best.predict(n - 1);
+  return { period: best.period, values: Array.from({ length: horizon }, (_, i) => Math.max(0.01, current + best.predict(n + i) - anchor)) };
+}
+
+// Keep projections on a tick axis: the market does not promise a future time.
+function priceChart(points, projection, series, title) {
+  if (points.length < 2) { emptyChart("price-chart", "Au moins deux observations sont nécessaires pour afficher une courbe."); return; }
+  const width = Math.max(300, Math.min(1000, $("price-chart").clientWidth));
+  const height = 275, left = 65, right = width - 20, top = 20, bottom = height - 35;
+  const boundary = projection ? left + (right - left) * 0.73 : right;
+  const pastX = i => left + i / (points.length - 1) * (boundary - left);
+  const futureX = i => boundary + i / projection.values.length * (right - boundary);
+  const allValues = points.flatMap(point => series.map(item => point[item.key])).filter(Number.isFinite);
+  if (projection) allValues.push(...projection.values);
+  let low = Math.min(...allValues), high = Math.max(...allValues);
+  const padding = (high - low || Math.abs(high) || 1) * 0.1;
+  low -= padding; high += padding;
+  const y = value => bottom - (value - low) / (high - low) * (bottom - top);
+  const svg = svgNode("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": title });
+  svg.append(svgNode("title", {}, title));
+  if (projection) svg.append(svgNode("rect", { x: boundary, y: top, width: right - boundary, height: bottom - top, fill: "#eef3f7" }));
+  for (let i = 0; i <= 4; i++) {
+    const value = low + (high - low) * i / 4;
+    svg.append(svgNode("line", { x1: left, x2: right, y1: y(value), y2: y(value), stroke: "#e4e9ed" }));
+    svg.append(svgNode("text", { x: left - 9, y: y(value) + 4, "text-anchor": "end", fill: "#596774", "font-size": 11 }, number(value)));
+  }
+  const mid = Math.floor((points.length - 1) / 2);
+  [[0, "start"], [mid, "middle"]].forEach(([i, anchor]) => svg.append(svgNode("text", { x: pastX(i), y: height - 10, "text-anchor": anchor, fill: "#596774", "font-size": 11 }, date(points[i].timestamp, true))));
+  svg.append(svgNode("text", { x: projection ? right : boundary, y: height - 10, "text-anchor": "end", fill: "#596774", "font-size": 11 }, projection ? "+5 ticks" : date(points.at(-1).timestamp, true)));
+  if (projection) {
+    svg.append(svgNode("line", { x1: boundary, x2: boundary, y1: top, y2: bottom, stroke: "#687987", "stroke-dasharray": "4 4" }));
+    svg.append(svgNode("text", { x: (boundary + right) / 2, y: top + 13, "text-anchor": "middle", fill: "#596774", "font-size": 10 }, "Estimations"));
+  }
+  series.forEach(item => {
+    let path = "", active = false;
+    points.forEach((point, i) => {
+      if (!Number.isFinite(point[item.key])) { active = false; return; }
+      path += `${active ? "L" : "M"}${pastX(i).toFixed(2)},${y(point[item.key]).toFixed(2)} `;
+      active = true;
+    });
+    svg.append(svgNode("path", { d: path, fill: "none", stroke: item.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-dasharray": item.dashed ? "6 4" : "none" }));
+  });
+  if (projection) {
+    let path = `M${boundary.toFixed(2)},${y(points.at(-1).price).toFixed(2)} `;
+    projection.values.forEach((value, i) => { path += `L${futureX(i + 1).toFixed(2)},${y(value).toFixed(2)} `; });
+    svg.append(svgNode("path", { d: path, fill: "none", stroke: "#a45e35", "stroke-width": 2.5, "stroke-linejoin": "round", "stroke-dasharray": "5 4" }));
+  }
+  $("price-chart").replaceChildren(svg);
+}
+
 function indicator(rows, product, index = rows.length - 1) {
   const window = state.config?.window;
   const price = rows[index]?.[product];
@@ -139,6 +235,7 @@ function renderPrices() {
     emptyTable("indicators", 5, "Impossible de calculer les indicateurs sans les prix.");
     $("price-legend").replaceChildren();
     $("market-time").textContent = "";
+    $("projection-note").textContent = "";
     return;
   }
   if (!market.products.includes(selectedProduct)) selectedProduct = market.products[0];
@@ -159,79 +256,13 @@ function renderPrices() {
   const count = Number($("period").value);
   const series = [{ key: "price", label: "Prix " + selectedProduct, color: "#315c86" }];
   if (selectedProduct === "A") series.push({ key: "low", label: "Seuil bas A", color: "#657a65", dashed: true }, { key: "high", label: "Seuil haut A", color: "#b77b32", dashed: true });
-  chart("price-chart", count ? points.slice(-count) : points, series, "Prix et seuils de stratégie du produit " + selectedProduct);
-  legend("price-legend", series);
+  const projection = cycleProjection(market.history.map(row => row[selectedProduct]));
+  priceChart(count ? points.slice(-count) : points, projection, series, "Prix observés et estimation des cinq prochains ticks du produit " + selectedProduct);
+  legend("price-legend", projection ? [...series, { key: "forecast", label: "Estimation (+5 ticks)", color: "#a45e35", dashed: true }] : series);
+  $("projection-note").textContent = projection
+    ? `Après la ligne verticale : estimation sur 5 ticks, issue d’une sinusoïde et d’une tendance ajustées aux 100 derniers prix au maximum (cycle estimé : ${projection.period} ticks). La zone projetée est élargie pour faciliter sa lecture ; aucune heure future n’est supposée. Cette estimation n’est pas une prévision garantie.`
+    : "La projection nécessite au moins 36 observations. Les ticks sont espacés uniformément sur ce graphique.";
   $("market-time").textContent = `Dernier prix : ${date(market.history.at(-1)?.timestamp)} (heure de Paris). ${market.history.length} observations. La zone de prix seule ne détermine pas la quantité à demander : celle-ci dépend du portefeuille.`;
-}
-
-// Estimate a per-tick linear trend from recent observations and damp it over
-// the forecast horizon. No timestamps are invented for the future ticks.
-function estimatePrice(prices, horizon) {
-  const size = 12;
-  if (prices.length < size) return null;
-  const recent = prices.slice(-size);
-  const mid = (size - 1) / 2;
-  const mean = recent.reduce((sum, value) => sum + value, 0) / size;
-  let numerator = 0, denominator = 0;
-  recent.forEach((value, index) => {
-    numerator += (index - mid) * (value - mean);
-    denominator += (index - mid) ** 2;
-  });
-  const dampedSteps = Array.from({ length: horizon }, (_, i) => 0.8 ** i).reduce((sum, value) => sum + value, 0);
-  return Math.max(0.01, recent.at(-1) + numerator / denominator * dampedSteps);
-}
-
-function quantile(values, q) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const position = (sorted.length - 1) * q;
-  const low = Math.floor(position), high = Math.ceil(position);
-  return sorted[low] + (sorted[high] - sorted[low]) * (position - low);
-}
-
-function projection(prices, horizon) {
-  const estimate = estimatePrice(prices, horizon);
-  if (estimate === null) return null;
-  const errors = [];
-  // Rolling-origin errors use only data that was already available at each origin.
-  for (let end = Math.max(12, prices.length - horizon - 119); end <= prices.length - horizon; end++) {
-    const pastEstimate = estimatePrice(prices.slice(0, end), horizon);
-    errors.push(prices[end + horizon - 1] - pastEstimate);
-  }
-  return {
-    estimate,
-    low: errors.length >= 20 ? Math.max(0.01, estimate + quantile(errors, 0.1)) : null,
-    high: errors.length >= 20 ? Math.max(0.01, estimate + quantile(errors, 0.9)) : null,
-    sampleSize: errors.length,
-  };
-}
-
-function renderProjections() {
-  const market = state.market;
-  $("projection-head").replaceChildren();
-  $("projections").replaceChildren();
-  $("projection-note").textContent = "";
-  if (!market) {
-    emptyTable("projections", 4, "Prix indisponibles : projections impossibles.");
-    return;
-  }
-  const header = element("tr");
-  ["Tick", ...market.products].forEach(label => header.append(element("th", label)));
-  $("projection-head").append(header);
-  if (market.history.length < 12) {
-    emptyTable("projections", market.products.length + 1, "Au moins 12 observations sont nécessaires.");
-    return;
-  }
-  let minSample = Infinity, maxSample = 0;
-  for (let horizon = 1; horizon <= 5; horizon++) {
-    const cells = market.products.map(product => {
-      const result = projection(market.history.map(row => row[product]), horizon);
-      minSample = Math.min(minSample, result.sampleSize);
-      maxSample = Math.max(maxSample, result.sampleSize);
-      return result.low === null ? priceNumber(result.estimate) : `${priceNumber(result.estimate)} [${priceNumber(result.low)} ; ${priceNumber(result.high)}]`;
-    });
-    tableRow($("projections"), [`+${horizon}`, ...cells]);
-  }
-  $("projection-note").textContent = `À partir du dernier prix connu du ${date(market.history.at(-1).timestamp)} (heure de Paris). Les crochets utilisent les 10e et 90e percentiles des erreurs historiques (${minSample} à ${maxSample} essais selon le tick). ${minSample < 20 ? "Historique insuffisant pour afficher une fourchette sur certains ticks. " : ""}Le rythme des ticks est variable et aucune date future n’est estimée.`;
 }
 
 function renderPortfolio() {
@@ -257,7 +288,9 @@ function renderPortfolio() {
   } else state.ranking.leaderboard.forEach((row, index) => {
     const name = row.name || row.id || "Participant sans nom";
     const type = row.id === "molivier" ? "Mon portefeuille" : row.baseline ? "Référence" : "Participant";
-    tableRow($("comparison"), [String(index + 1), name, number(row.total_value), type]);
+    const element = tableRow($("comparison"), [String(index + 1), name, number(row.total_value), type]);
+    if (row.id === "molivier") element.classList.add("ranking-self");
+    if (row.baseline) element.classList.add("ranking-baseline");
   });
 
   const snapshots = state.history?.snapshots ?? [];
@@ -365,7 +398,7 @@ async function refresh() {
   if (location.protocol === "file:") messages.push("Pour charger les fichiers de suivi, ouvrir cette page via un serveur local ou GitHub Pages.");
   $("status").textContent = messages.length ? messages.join("\n") : "Flux chargés. Les projections sont des estimations ; les autres valeurs proviennent des données disponibles.";
   $("status").classList.toggle("warning", messages.length > 0);
-  renderPrices(); renderProjections(); renderPortfolio(); renderDecisions();
+  renderPrices(); renderPortfolio(); renderDecisions();
   $("refreshed").textContent = "Consulté le " + date(new Date().toISOString());
   $("refresh").disabled = false;
 }

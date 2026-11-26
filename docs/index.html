@@ -24,14 +24,9 @@
       <div class="section-heading"><h2 id="prices-title">Prix et indicateurs</h2><div class="controls"><div id="products" class="tabs" aria-label="Produit affiché"></div><label>Période <select id="period"><option value="60">60 dernières observations</option><option value="0">Tout l’historique</option></select></label></div></div>
       <p class="muted">Pour A, les seuils bas et haut correspondent aux 20 % et 80 % de prix sur les 60 dernières observations. B est conservé sans achat ni vente ; C est progressivement vendu.</p>
       <div id="price-chart" class="chart"></div><div id="price-legend" class="legend"></div>
+      <p id="projection-note" class="footnote"></p>
       <div class="table-wrap"><table><caption class="sr-only">Indicateurs actuels par produit</caption><thead><tr><th>Produit</th><th>Dernier prix</th><th>Seuil bas A</th><th>Seuil haut A</th><th>Lecture de la stratégie</th></tr></thead><tbody id="indicators"></tbody></table></div>
       <p id="market-time" class="footnote"></p>
-    </section>
-    <section class="panel" aria-labelledby="projection-title">
-      <h2 id="projection-title">Projection des prochains ticks</h2>
-      <p class="muted">Estimation indicative à partir de la tendance des 12 derniers prix, progressivement atténuée sur 5 ticks. La fourchette reflète les erreurs observées sur des projections historiques comparables ; elle ne garantit pas les prix futurs.</p>
-      <div class="table-wrap"><table><caption class="sr-only">Prix projetés et fourchettes indicatives par tick</caption><thead id="projection-head"></thead><tbody id="projections"></tbody></table></div>
-      <p id="projection-note" class="footnote"></p>
     </section>
     <section class="panel" aria-labelledby="performance-title">
       <h2 id="performance-title">Performance et références officielles</h2>

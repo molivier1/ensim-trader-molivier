@@ -44,6 +44,8 @@ table { width: 100%; border-collapse: collapse; text-align: left; font-size: .86
 th { color: #596774; font-weight: 550; background: #f7f8f9; white-space: nowrap; }
 td, th { padding: 12px 10px; border-bottom: 1px solid #e6e9ec; font-variant-numeric: tabular-nums; }
 tbody tr:last-child td { border-bottom: 0; }
+tr.ranking-self { font-weight: 700; }
+tr.ranking-baseline { background: #f0f1f2; }
 .footnote { font-size: .79rem; margin-top: 14px; }
 .journal-controls, .journal-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; font-size: .85rem; }
 .journal-controls label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

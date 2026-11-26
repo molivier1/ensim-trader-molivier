@@ -219,13 +219,14 @@ function indicator(rows, product, index = rows.length - 1) {
   if (product === "B") return { price, low: null, high: null, zone: state.config.b_mode === "hold" ? "Conserver sans achat ni vente" : `Cible : ${number(state.config.b_target_weight * 100)} % du portefeuille` };
   if (product === "C") return { price, low: null, high: null, zone: "Réduire la position sans acheter" };
   if (product !== "A") return { price, low: null, high: null, zone: "Aucune stratégie définie" };
-  if (index + 1 < window) return { price, low: null, high: null, zone: Number.isFinite(state.config.a_target_units) ? `Historique insuffisant : alléger au-delà de ${number(state.config.a_target_units)} unités` : "Historique insuffisant" };
+  if (index + 1 < window) return { price, low: null, high: null, zone: state.config.a_peak_timing ? "Historique insuffisant pour les seuils" : Number.isFinite(state.config.a_target_units) ? `Historique insuffisant : alléger au-delà de ${number(state.config.a_target_units)} unités` : "Historique insuffisant" };
   const prices = rows.slice(index + 1 - window, index + 1).map(row => row[product]).sort((a, b) => a - b);
   const low = prices[Math.floor(state.config.entry_quantile * (window - 1))];
   const high = prices[Math.floor(state.config.exit_quantile * (window - 1))];
   const unitTarget = state.config.a_target_units;
   const targetLabel = Number.isFinite(unitTarget) ? `${number(unitTarget)} unités` : `${number(state.config.a_target_weight * 100)} %`;
-  const zone = low === high ? (Number.isFinite(unitTarget) ? `Seuils confondus : alléger au-delà de ${targetLabel}` : "Conserver : seuils confondus") : price <= low ? `Zone basse : viser ${targetLabel}` : price >= high ? "Zone haute : vendre" : Number.isFinite(unitTarget) ? `Alléger au-delà de ${targetLabel}, sinon conserver` : "Conserver la position";
+  const excess = state.config.a_peak_timing && Number.isFinite(unitTarget) && state.holdings?.products?.A > unitTarget;
+  const zone = low === high ? (state.config.a_peak_timing ? "Seuils confondus : attendre le pic pour alléger" : Number.isFinite(unitTarget) ? `Seuils confondus : alléger au-delà de ${targetLabel}` : "Conserver : seuils confondus") : price >= high ? (state.config.a_peak_timing ? "Zone haute : vente près du pic estimé" : "Zone haute : vendre") : excess ? "Excédent : vendre près du pic estimé" : price <= low ? `Zone basse : viser ${targetLabel}` : state.config.a_peak_timing ? `Au-delà de ${targetLabel} : attendre le pic estimé` : Number.isFinite(unitTarget) ? `Alléger au-delà de ${targetLabel}, sinon conserver` : "Conserver la position";
   return { price, low, high, zone };
 }
 

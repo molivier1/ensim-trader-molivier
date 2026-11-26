@@ -16,6 +16,9 @@ SIGNAL_WINDOW = 60
 ENTRY_QUANTILE = 0.20
 EXIT_QUANTILE = 0.80
 A_TARGET_UNITS = 1000
+CYCLE_WINDOW = 240
+CYCLE_MIN_OBSERVATIONS = 160
+POST_PEAK_TICKS = 5
 
 def fetch_json(url):
     resp = requests.get(url, proxies={"http": None, "https": None}, timeout=(10, 20))
@@ -26,6 +29,82 @@ def round_signal(signal):
     """Clip and round toward zero, without exceeding the desired quantity."""
     signal = max(-1.0, min(1.0, signal))
     return math.copysign(math.floor(abs(signal) * 1000 + 1e-9) / 1000, signal)
+
+def solve_system(matrix, vector):
+    """Solve the four-variable least-squares system used by the dashboard."""
+    rows = [row[:] + [vector[i]] for i, row in enumerate(matrix)]
+    for column in range(4):
+        pivot = max(range(column, 4), key=lambda i: abs(rows[i][column]))
+        if abs(rows[pivot][column]) < 1e-10:
+            return None
+        rows[column], rows[pivot] = rows[pivot], rows[column]
+        divisor = rows[column][column]
+        for j in range(column, 5):
+            rows[column][j] /= divisor
+        for row in range(4):
+            if row == column:
+                continue
+            factor = rows[row][column]
+            for j in range(column, 5):
+                rows[row][j] -= factor * rows[column][j]
+    return [row[4] for row in rows]
+
+def estimate_peak_timing(prices):
+    """Fit the dashboard's sinusoid plus linear trend; return peak distances."""
+    recent = prices[-CYCLE_WINDOW:]
+    n = len(recent)
+    if n < CYCLE_MIN_OBSERVATIONS:
+        return None
+    best = None
+    for period in range(12, min(160, int(n * 0.6)) + 1):
+        matrix = [[0.0] * 4 for _ in range(4)]
+        vector = [0.0] * 4
+        features = []
+        for i, price in enumerate(recent):
+            angle = 2 * math.pi * i / period
+            f = (1.0, i / (n - 1), math.sin(angle), math.cos(angle))
+            features.append(f)
+            for j in range(4):
+                vector[j] += f[j] * price
+                for k in range(4):
+                    matrix[j][k] += f[j] * f[k]
+        coefficients = solve_system(matrix, vector)
+        if coefficients is None:
+            continue
+        error = sum((price - sum(f[j] * coefficients[j] for j in range(4))) ** 2
+                    for price, f in zip(recent, features))
+        if best is None or error < best[0]:
+            best = (error, period, coefficients)
+    if best is None:
+        return None
+    _, period, c = best
+    if math.hypot(c[2], c[3]) < max(abs(sum(recent) / n) * 0.0001, 1e-8):
+        return None
+    def model(offset):
+        i = n - 1 + offset
+        angle = 2 * math.pi * i / period
+        return c[0] + c[1] * i / (n - 1) + c[2] * math.sin(angle) + c[3] * math.cos(angle)
+    peaks = [i for i in range(-period, period + 1)
+             if model(i) >= model(i - 1) and model(i) > model(i + 1)]
+    future = [i for i in peaks if i >= 0]
+    past = [i for i in peaks if i <= 0]
+    if not future and not past:
+        return None
+    return {"period": period, "next": min(future) if future else None,
+            "since": -max(past) if past else None}
+
+def sell_near_peak(prices, units_to_sell):
+    peak = estimate_peak_timing(prices)
+    if peak is None:
+        return False, "A : aucun pic estimable, conserver en attendant."
+    ticks_needed = math.ceil(units_to_sell / 100)
+    if peak["next"] is not None and peak["next"] <= ticks_needed:
+        return True, f"A : pic estimé dans {peak['next']} ticks, vente progressive."
+    if peak["since"] is not None and peak["since"] <= POST_PEAK_TICKS:
+        return True, f"A : pic estimé il y a {peak['since']} ticks, vente progressive."
+    if peak["next"] is not None:
+        return False, f"A : pic estimé dans {peak['next']} ticks ; attendre avant de vendre."
+    return False, "A : prochain pic non estimable, conserver en attendant."
 
 def compute_signal(product, prices, owned_units, portfolio_value):
     if not prices or prices[-1] <= 0:
@@ -38,11 +117,11 @@ def compute_signal(product, prices, owned_units, portfolio_value):
             low = recent[int(ENTRY_QUANTILE * (SIGNAL_WINDOW - 1))]
             high = recent[int(EXIT_QUANTILE * (SIGNAL_WINDOW - 1))]
         if low is not None and low < high and price >= high:
+            if owned_units <= 0:
+                return 0.0, "A : zone haute, aucune unité à vendre."
             target = 0.0
-            reason = "A : zone haute, vendre progressivement."
         elif owned_units > A_TARGET_UNITS:
             target = float(A_TARGET_UNITS)
-            reason = "A : alléger progressivement la position vers 1 000 unités."
         elif low is None:
             return 0.0, f"Attente : {len(prices)}/{SIGNAL_WINDOW} observations pour A."
         elif low == high:
@@ -52,6 +131,10 @@ def compute_signal(product, prices, owned_units, portfolio_value):
             reason = "A : zone basse, acheter jusqu’à 1 000 unités."
         else:
             return 0.0, "A : entre les seuils, conserver la position."
+        if target < owned_units:
+            allowed, reason = sell_near_peak(prices, owned_units - target)
+            if not allowed:
+                return 0.0, reason
     elif product == "B":
         return 0.0, "B : conserver la position, sans achat ni vente."
     elif product == "C":
@@ -101,7 +184,7 @@ def save_dashboard_data(market, holdings, decision, reasons):
 
     write_json("strategy.json", {"window": SIGNAL_WINDOW,
                "entry_quantile": ENTRY_QUANTILE, "exit_quantile": EXIT_QUANTILE,
-               "a_target_units": A_TARGET_UNITS, "b_mode": "hold",
+               "a_target_units": A_TARGET_UNITS, "a_peak_timing": True, "b_mode": "hold",
                "reserve": MIN_MONEY_RESERVE})
     decisions = read_records("decision_log.json", "decisions")
     entry = {"updated_at": decision["updated_at"],

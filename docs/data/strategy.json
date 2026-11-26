@@ -1,7 +1,6 @@
 {
-  "window": 60,
-  "entry_quantile": 0.2,
-  "exit_quantile": 0.8,
+  "a_entry_price": 4.4,
+  "a_exit_price": 5.4,
   "a_target_units": 1000,
   "a_peak_timing": true,
   "b_mode": "hold",

@@ -12,9 +12,8 @@ DASHBOARD_DATA = Path(__file__).resolve().parents[1] / "docs" / "data"
 MIN_MONEY_RESERVE = 50
 
 # Modeling choices to explain in the report, not parameters supplied by the TP.
-SIGNAL_WINDOW = 60
-ENTRY_QUANTILE = 0.20
-EXIT_QUANTILE = 0.80
+A_ENTRY_PRICE = 4.40
+A_EXIT_PRICE = 5.40
 A_TARGET_UNITS = 1000
 CYCLE_WINDOW = 240
 CYCLE_MIN_OBSERVATIONS = 160
@@ -111,22 +110,13 @@ def compute_signal(product, prices, owned_units, portfolio_value):
         return 0.0, "Attente : prix indisponible."
     price = prices[-1]
     if product == "A":
-        low = high = None
-        if len(prices) >= SIGNAL_WINDOW:
-            recent = sorted(prices[-SIGNAL_WINDOW:])
-            low = recent[int(ENTRY_QUANTILE * (SIGNAL_WINDOW - 1))]
-            high = recent[int(EXIT_QUANTILE * (SIGNAL_WINDOW - 1))]
-        if low is not None and low < high and price >= high:
+        if price >= A_EXIT_PRICE:
             if owned_units <= 0:
                 return 0.0, "A : zone haute, aucune unité à vendre."
             target = 0.0
         elif owned_units > A_TARGET_UNITS:
             target = float(A_TARGET_UNITS)
-        elif low is None:
-            return 0.0, f"Attente : {len(prices)}/{SIGNAL_WINDOW} observations pour A."
-        elif low == high:
-            return 0.0, "A : seuils confondus, conserver la position."
-        elif price <= low:
+        elif price <= A_ENTRY_PRICE:
             target = float(A_TARGET_UNITS)
             reason = "A : zone basse, acheter jusqu’à 1 000 unités."
         else:
@@ -182,8 +172,7 @@ def save_dashboard_data(market, holdings, decision, reasons):
         temporary.write_text(json.dumps(data, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")
         temporary.replace(path)
 
-    write_json("strategy.json", {"window": SIGNAL_WINDOW,
-               "entry_quantile": ENTRY_QUANTILE, "exit_quantile": EXIT_QUANTILE,
+    write_json("strategy.json", {"a_entry_price": A_ENTRY_PRICE, "a_exit_price": A_EXIT_PRICE,
                "a_target_units": A_TARGET_UNITS, "a_peak_timing": True, "b_mode": "hold",
                "reserve": MIN_MONEY_RESERVE})
     decisions = read_records("decision_log.json", "decisions")

@@ -21,6 +21,10 @@ const BASELINES = [
 ];
 const $ = id => document.getElementById(id);
 const number = value => Number.isFinite(value) ? value.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) : "—";
+function axisNumber(value, step) {
+  const digits = step > 0 ? Math.min(6, Math.max(0, 1 - Math.floor(Math.log10(step)))) : 2;
+  return value.toLocaleString("fr-FR", { maximumFractionDigits: digits });
+}
 const percent = value => Number.isFinite(value) ? number(value) + " %" : "—";
 const date = (value, short = false) => {
   const parsed = new Date(value);
@@ -29,10 +33,48 @@ const date = (value, short = false) => {
     ? { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" }
     : { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
+function axisDate(value, spanMs) {
+  if (spanMs >= 2 * 24 * 60 * 60 * 1000) return date(value, true);
+  return new Date(value).toLocaleString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 let state = {};
 let selectedProduct = "A";
 let decisionPage = 1;
 const DECISIONS_PER_PAGE = 15;
+const chartViews = Object.fromEntries(["price-chart", "performance-chart", "risk-chart"].map(id => [id, { span: 1, end: 1 }]));
+
+function chartControls(id, start, end, total) {
+  const count = end - start;
+  $(id + "-view").textContent = total ? `${start + 1}–${end} / ${total}` : "Aucune donnée";
+  $(id + "-prev").disabled = start <= 0;
+  $(id + "-next").disabled = end >= total;
+  $(id + "-in").disabled = count <= 2;
+  $(id + "-out").disabled = total === 0 || count >= total;
+  $(id + "-reset").disabled = total === 0 || (start === 0 && end === total);
+}
+
+function visiblePoints(id, points) {
+  const view = chartViews[id], total = points.length;
+  if (!total) { chartControls(id, 0, 0, 0); return { visible: [], start: 0, end: 0 }; }
+  const count = Math.min(total, Math.max(2, Math.ceil(total * view.span)));
+  const end = Math.min(total, Math.max(count, Math.round(total * view.end)));
+  const start = end - count;
+  view.span = count / total;
+  view.end = end / total;
+  chartControls(id, start, end, total);
+  return { visible: points.slice(start, end), start, end };
+}
+
+function changeChartView(id, action) {
+  const view = chartViews[id];
+  if (action === "in") view.span = Math.max(0.001, view.span / 2);
+  if (action === "out") view.span = Math.min(1, view.span * 2);
+  if (action === "prev") view.end -= view.span / 2;
+  if (action === "next") view.end += view.span / 2;
+  if (action === "reset") { view.span = 1; view.end = 1; }
+  view.end = Math.min(1, Math.max(view.span, view.end));
+  if (id === "price-chart") renderPrices(); else renderPortfolio();
+}
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -57,6 +99,7 @@ function emptyTable(id, columns, message) {
 }
 function emptyChart(id, message) {
   $(id).replaceChildren(element("p", message, "empty"));
+  if (chartViews[id]) chartControls(id, 0, 0, 0);
 }
 function legend(id, series) {
   $(id).replaceChildren();
@@ -78,7 +121,8 @@ function svgNode(tag, attributes = {}, text) {
   return node;
 }
 function chart(id, points, series, title, unit = "") {
-  const valid = points.filter(point => Number.isFinite(Date.parse(point.timestamp)));
+  const all = points.filter(point => Number.isFinite(Date.parse(point.timestamp)));
+  const { visible: valid } = visiblePoints(id, all);
   const values = valid.flatMap(point => series.map(s => point[s.key])).filter(Number.isFinite);
   if (!values.length || valid.length < 2) {
     emptyChart(id, "Au moins deux observations sont nécessaires pour afficher une courbe.");
@@ -98,11 +142,10 @@ function chart(id, points, series, title, unit = "") {
   for (let i = 0; i <= 4; i++) {
     const value = low + (high - low) * i / 4;
     svg.append(svgNode("line", { x1: left, x2: right, y1: y(value), y2: y(value), stroke: "#e4e9ed" }));
-    svg.append(svgNode("text", { x: left - 9, y: y(value) + 4, "text-anchor": "end", fill: "#596774", "font-size": 11 }, number(value) + unit));
+    svg.append(svgNode("text", { x: left - 9, y: y(value) + 4, "text-anchor": "end", fill: "#596774", "font-size": 11 }, axisNumber(value, (high - low) / 4) + unit));
   }
-  for (const [index, timestamp] of [valid[0].timestamp, valid[Math.floor(valid.length / 2)].timestamp, valid.at(-1).timestamp].entries()) {
-    svg.append(svgNode("text", { x: x(timestamp), y: height - 10, "text-anchor": index === 0 ? "start" : index === 2 ? "end" : "middle", fill: "#596774", "font-size": 11 }, date(timestamp, true)));
-  }
+  const dateLabels = valid.length === 2 ? [[valid[0].timestamp, "start"], [valid[1].timestamp, "end"]] : [[valid[0].timestamp, "start"], [valid[Math.floor(valid.length / 2)].timestamp, "middle"], [valid.at(-1).timestamp, "end"]];
+  dateLabels.forEach(([timestamp, anchor]) => svg.append(svgNode("text", { x: x(timestamp), y: height - 10, "text-anchor": anchor, fill: "#596774", "font-size": 11 }, axisDate(timestamp, end - start))));
   series.forEach(item => {
     let path = "", active = false;
     valid.forEach(point => {
@@ -168,61 +211,75 @@ function cycleProjection(prices, horizon = 20) {
 
 // Keep projections on a tick axis: the market does not promise a future time.
 function priceChart(points, projection, series, title) {
-  if (points.length < 2) { emptyChart("price-chart", "Au moins deux observations sont nécessaires pour afficher une courbe."); return; }
+  const historic = points.map((point, i) => ({ ...point, tickIndex: i }));
+  if (projection && historic.length) historic.at(-1).forecast = historic.at(-1).price;
+  const fixedThresholds = Number.isFinite(state.config?.a_entry_price) && Number.isFinite(state.config?.a_exit_price);
+  const future = projection ? projection.values.map((forecast, i) => ({
+    forecast, futureTick: i + 1, tickIndex: historic.length + i,
+    ...(selectedProduct === "A" && fixedThresholds ? { low: state.config.a_entry_price, high: state.config.a_exit_price } : {}),
+  })) : [];
+  const all = [...historic, ...future];
+  const { visible: pointsInView, start, end } = visiblePoints("price-chart", all);
+  if (pointsInView.length < 2) { emptyChart("price-chart", "Au moins deux observations sont nécessaires pour afficher une courbe."); return; }
   const width = Math.max(300, Math.min(1000, $("price-chart").clientWidth));
   const height = 275, left = 65, right = width - 20, top = 20, bottom = height - 35;
-  const boundary = projection ? left + (right - left) * (points.length - 1) / (points.length - 1 + projection.values.length) : right;
-  const pastX = i => left + i / (points.length - 1) * (boundary - left);
-  const futureX = i => boundary + i / projection.values.length * (right - boundary);
-  const allValues = points.flatMap(point => series.map(item => point[item.key])).filter(Number.isFinite);
-  if (projection) allValues.push(...projection.values);
+  const x = i => left + (i - start) / (end - start - 1) * (right - left);
+  const drawnSeries = projection ? [...series, { key: "forecast", color: "#a45e35", dashed: true }] : series;
+  const allValues = pointsInView.flatMap(point => drawnSeries.map(item => point[item.key])).filter(Number.isFinite);
+  if (!allValues.length) { emptyChart("price-chart", "Aucune valeur disponible sur cette période."); return; }
   let low = Math.min(...allValues), high = Math.max(...allValues);
   const padding = (high - low || Math.abs(high) || 1) * 0.1;
   low -= padding; high += padding;
   const y = value => bottom - (value - low) / (high - low) * (bottom - top);
   const svg = svgNode("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": title });
   svg.append(svgNode("title", {}, title));
-  if (projection) svg.append(svgNode("rect", { x: boundary, y: top, width: right - boundary, height: bottom - top, fill: "#eef3f7" }));
+  const boundaryIndex = historic.length - 1;
+  if (projection && end - 1 > boundaryIndex) {
+    const startShade = x(Math.max(start, boundaryIndex));
+    svg.append(svgNode("rect", { x: startShade, y: top, width: right - startShade, height: bottom - top, fill: "#eef3f7" }));
+    if (boundaryIndex >= start) svg.append(svgNode("line", { x1: x(boundaryIndex), x2: x(boundaryIndex), y1: top, y2: bottom, stroke: "#687987", "stroke-dasharray": "4 4" }));
+    svg.append(svgNode("text", { x: (startShade + right) / 2, y: top + 13, "text-anchor": "middle", fill: "#596774", "font-size": 10 }, "Estimations"));
+  }
   for (let i = 0; i <= 4; i++) {
     const value = low + (high - low) * i / 4;
     svg.append(svgNode("line", { x1: left, x2: right, y1: y(value), y2: y(value), stroke: "#e4e9ed" }));
-    svg.append(svgNode("text", { x: left - 9, y: y(value) + 4, "text-anchor": "end", fill: "#596774", "font-size": 11 }, number(value)));
+    svg.append(svgNode("text", { x: left - 9, y: y(value) + 4, "text-anchor": "end", fill: "#596774", "font-size": 11 }, axisNumber(value, (high - low) / 4)));
   }
-  const mid = Math.floor((points.length - 1) / 2);
-  [[0, "start"], [mid, "middle"]].forEach(([i, anchor]) => svg.append(svgNode("text", { x: pastX(i), y: height - 10, "text-anchor": anchor, fill: "#596774", "font-size": 11 }, date(points[i].timestamp, true))));
-  svg.append(svgNode("text", { x: projection ? right : boundary, y: height - 10, "text-anchor": "end", fill: "#596774", "font-size": 11 }, projection ? `+${projection.values.length} ticks` : date(points.at(-1).timestamp, true)));
-  if (projection) {
-    svg.append(svgNode("line", { x1: boundary, x2: boundary, y1: top, y2: bottom, stroke: "#687987", "stroke-dasharray": "4 4" }));
-    svg.append(svgNode("text", { x: (boundary + right) / 2, y: top + 13, "text-anchor": "middle", fill: "#596774", "font-size": 10 }, "Estimations"));
-  }
-  series.forEach(item => {
+  const mid = Math.floor((pointsInView.length - 1) / 2);
+  const datedPoints = pointsInView.filter(point => point.timestamp);
+  const dateSpan = datedPoints.length > 1 ? Date.parse(datedPoints.at(-1).timestamp) - Date.parse(datedPoints[0].timestamp) : 0;
+  const labels = pointsInView.length === 2 ? [[0, "start"], [1, "end"]] : [[0, "start"], [mid, "middle"], [pointsInView.length - 1, "end"]];
+  labels.forEach(([i, anchor]) => {
+    const point = pointsInView[i];
+    const label = point.futureTick ? `+${point.futureTick} ticks` : axisDate(point.timestamp, dateSpan);
+    svg.append(svgNode("text", { x: x(start + i), y: height - 10, "text-anchor": anchor, fill: "#596774", "font-size": 11 }, label));
+  });
+  drawnSeries.forEach(item => {
     let path = "", active = false;
-    points.forEach((point, i) => {
+    pointsInView.forEach((point, i) => {
       if (!Number.isFinite(point[item.key])) { active = false; return; }
-      path += `${active ? "L" : "M"}${pastX(i).toFixed(2)},${y(point[item.key]).toFixed(2)} `;
+      path += `${active ? "L" : "M"}${x(start + i).toFixed(2)},${y(point[item.key]).toFixed(2)} `;
       active = true;
     });
-    svg.append(svgNode("path", { d: path, fill: "none", stroke: item.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-dasharray": item.dashed ? "6 4" : "none" }));
+    svg.append(svgNode("path", { d: path, fill: "none", stroke: item.color, "stroke-width": item.key === "forecast" ? 2.5 : 2, "stroke-linejoin": "round", "stroke-dasharray": item.dashed ? "6 4" : "none" }));
   });
-  if (projection) {
-    let path = `M${boundary.toFixed(2)},${y(points.at(-1).price).toFixed(2)} `;
-    projection.values.forEach((value, i) => { path += `L${futureX(i + 1).toFixed(2)},${y(value).toFixed(2)} `; });
-    svg.append(svgNode("path", { d: path, fill: "none", stroke: "#a45e35", "stroke-width": 2.5, "stroke-linejoin": "round", "stroke-dasharray": "5 4" }));
-  }
   $("price-chart").replaceChildren(svg);
 }
 
 function indicator(rows, product, index = rows.length - 1) {
-  const window = state.config?.window;
   const price = rows[index]?.[product];
-  if (!window) return { price, low: null, high: null, zone: "Configuration indisponible" };
+  if (!state.config) return { price, low: null, high: null, zone: "Configuration indisponible" };
   if (product === "B") return { price, low: null, high: null, zone: state.config.b_mode === "hold" ? "Conserver sans achat ni vente" : `Cible : ${number(state.config.b_target_weight * 100)} % du portefeuille` };
   if (product === "C") return { price, low: null, high: null, zone: "Réduire la position sans acheter" };
   if (product !== "A") return { price, low: null, high: null, zone: "Aucune stratégie définie" };
-  if (index + 1 < window) return { price, low: null, high: null, zone: state.config.a_peak_timing ? "Historique insuffisant pour les seuils" : Number.isFinite(state.config.a_target_units) ? `Historique insuffisant : alléger au-delà de ${number(state.config.a_target_units)} unités` : "Historique insuffisant" };
-  const prices = rows.slice(index + 1 - window, index + 1).map(row => row[product]).sort((a, b) => a - b);
-  const low = prices[Math.floor(state.config.entry_quantile * (window - 1))];
-  const high = prices[Math.floor(state.config.exit_quantile * (window - 1))];
+  let low = state.config.a_entry_price, high = state.config.a_exit_price;
+  if (!Number.isFinite(low) || !Number.isFinite(high)) {
+    const window = state.config.window;
+    if (index + 1 < window) return { price, low: null, high: null, zone: "Historique insuffisant pour les seuils" };
+    const prices = rows.slice(index + 1 - window, index + 1).map(row => row[product]).sort((a, b) => a - b);
+    low = prices[Math.floor(state.config.entry_quantile * (window - 1))];
+    high = prices[Math.floor(state.config.exit_quantile * (window - 1))];
+  }
   const unitTarget = state.config.a_target_units;
   const targetLabel = Number.isFinite(unitTarget) ? `${number(unitTarget)} unités` : `${number(state.config.a_target_weight * 100)} %`;
   const excess = state.config.a_peak_timing && Number.isFinite(unitTarget) && state.holdings?.products?.A > unitTarget;
@@ -400,7 +457,9 @@ async function refresh() {
   if (!Array.isArray(state.ranking?.leaderboard) || state.ranking.leaderboard.some(row => !row || typeof row !== "object")) { state.ranking = null; messages.push("Classement officiel indisponible."); }
   if (!Array.isArray(state.history?.snapshots) || state.history.snapshots.some(row => !row || !Number.isFinite(row.total_value) || row.total_value < 0 || !Number.isFinite(Date.parse(row.market_timestamp)))) { state.history = null; messages.push("Historique de suivi indisponible ou invalide."); }
   if (!Array.isArray(state.decisions?.decisions) || state.decisions.decisions.some(row => !row || !row.signals || Object.values(row.signals).some(value => !Number.isFinite(value)))) { state.decisions = null; messages.push("Journal des décisions indisponible."); }
-  if (!Number.isInteger(state.config?.window) || state.config.window < 2 || !Number.isFinite(state.config.entry_quantile) || !Number.isFinite(state.config.exit_quantile) || state.config.entry_quantile < 0 || state.config.exit_quantile > 1 || state.config.entry_quantile >= state.config.exit_quantile || !(Number.isFinite(state.config.a_target_units) || Number.isFinite(state.config.a_target_weight)) || !(state.config.b_mode === "hold" || Number.isFinite(state.config.b_target_weight))) { state.config = null; messages.push("Configuration des indicateurs indisponible."); }
+  const fixedThresholds = Number.isFinite(state.config?.a_entry_price) && Number.isFinite(state.config?.a_exit_price) && state.config.a_entry_price > 0 && state.config.a_entry_price < state.config.a_exit_price;
+  const rollingThresholds = Number.isInteger(state.config?.window) && state.config.window >= 2 && Number.isFinite(state.config.entry_quantile) && Number.isFinite(state.config.exit_quantile) && state.config.entry_quantile >= 0 && state.config.exit_quantile <= 1 && state.config.entry_quantile < state.config.exit_quantile;
+  if (!(fixedThresholds || rollingThresholds) || !(Number.isFinite(state.config?.a_target_units) || Number.isFinite(state.config?.a_target_weight)) || !(state.config?.b_mode === "hold" || Number.isFinite(state.config?.b_target_weight))) { state.config = null; messages.push("Configuration des indicateurs indisponible."); }
   if (location.protocol === "file:") messages.push("Pour charger les fichiers de suivi, ouvrir cette page via un serveur local ou GitHub Pages.");
   $("status").textContent = messages.length ? messages.join("\n") : "Flux chargés. Les projections sont des estimations ; les autres valeurs proviennent des données disponibles.";
   $("status").classList.toggle("warning", messages.length > 0);
@@ -415,6 +474,7 @@ $("ranking-source").href = URLS.ranking;
 $("refresh").addEventListener("click", refresh);
 $("period").addEventListener("change", renderPrices);
 $("projection-horizon").addEventListener("change", renderPrices);
+Object.keys(chartViews).forEach(id => ["in", "out", "prev", "next", "reset"].forEach(action => $(id + "-" + action).addEventListener("click", () => changeChartView(id, action))));
 $("decision-product").addEventListener("change", () => { decisionPage = 1; renderDecisions(); });
 $("decision-sort").addEventListener("change", () => { decisionPage = 1; renderDecisions(); });
 $("decision-prev").addEventListener("click", () => { decisionPage--; renderDecisions(); });

@@ -219,11 +219,13 @@ function indicator(rows, product, index = rows.length - 1) {
   if (product === "B") return { price, low: null, high: null, zone: state.config.b_mode === "hold" ? "Conserver sans achat ni vente" : `Cible : ${number(state.config.b_target_weight * 100)} % du portefeuille` };
   if (product === "C") return { price, low: null, high: null, zone: "Réduire la position sans acheter" };
   if (product !== "A") return { price, low: null, high: null, zone: "Aucune stratégie définie" };
-  if (index + 1 < window) return { price, low: null, high: null, zone: "Historique insuffisant" };
+  if (index + 1 < window) return { price, low: null, high: null, zone: Number.isFinite(state.config.a_target_units) ? `Historique insuffisant : alléger au-delà de ${number(state.config.a_target_units)} unités` : "Historique insuffisant" };
   const prices = rows.slice(index + 1 - window, index + 1).map(row => row[product]).sort((a, b) => a - b);
   const low = prices[Math.floor(state.config.entry_quantile * (window - 1))];
   const high = prices[Math.floor(state.config.exit_quantile * (window - 1))];
-  const zone = low === high ? "Conserver : seuils confondus" : price <= low ? `Zone basse : viser ${number(state.config.a_target_weight * 100)} %` : price >= high ? "Zone haute : vendre" : "Conserver la position";
+  const unitTarget = state.config.a_target_units;
+  const targetLabel = Number.isFinite(unitTarget) ? `${number(unitTarget)} unités` : `${number(state.config.a_target_weight * 100)} %`;
+  const zone = low === high ? (Number.isFinite(unitTarget) ? `Seuils confondus : alléger au-delà de ${targetLabel}` : "Conserver : seuils confondus") : price <= low ? `Zone basse : viser ${targetLabel}` : price >= high ? "Zone haute : vendre" : Number.isFinite(unitTarget) ? `Alléger au-delà de ${targetLabel}, sinon conserver` : "Conserver la position";
   return { price, low, high, zone };
 }
 
@@ -397,7 +399,7 @@ async function refresh() {
   if (!Array.isArray(state.ranking?.leaderboard) || state.ranking.leaderboard.some(row => !row || typeof row !== "object")) { state.ranking = null; messages.push("Classement officiel indisponible."); }
   if (!Array.isArray(state.history?.snapshots) || state.history.snapshots.some(row => !row || !Number.isFinite(row.total_value) || row.total_value < 0 || !Number.isFinite(Date.parse(row.market_timestamp)))) { state.history = null; messages.push("Historique de suivi indisponible ou invalide."); }
   if (!Array.isArray(state.decisions?.decisions) || state.decisions.decisions.some(row => !row || !row.signals || Object.values(row.signals).some(value => !Number.isFinite(value)))) { state.decisions = null; messages.push("Journal des décisions indisponible."); }
-  if (!Number.isInteger(state.config?.window) || state.config.window < 2 || !Number.isFinite(state.config.entry_quantile) || !Number.isFinite(state.config.exit_quantile) || state.config.entry_quantile < 0 || state.config.exit_quantile > 1 || state.config.entry_quantile >= state.config.exit_quantile || !Number.isFinite(state.config.a_target_weight) || !(state.config.b_mode === "hold" || Number.isFinite(state.config.b_target_weight))) { state.config = null; messages.push("Configuration des indicateurs indisponible."); }
+  if (!Number.isInteger(state.config?.window) || state.config.window < 2 || !Number.isFinite(state.config.entry_quantile) || !Number.isFinite(state.config.exit_quantile) || state.config.entry_quantile < 0 || state.config.exit_quantile > 1 || state.config.entry_quantile >= state.config.exit_quantile || !(Number.isFinite(state.config.a_target_units) || Number.isFinite(state.config.a_target_weight)) || !(state.config.b_mode === "hold" || Number.isFinite(state.config.b_target_weight))) { state.config = null; messages.push("Configuration des indicateurs indisponible."); }
   if (location.protocol === "file:") messages.push("Pour charger les fichiers de suivi, ouvrir cette page via un serveur local ou GitHub Pages.");
   $("status").textContent = messages.length ? messages.join("\n") : "Flux chargés. Les projections sont des estimations ; les autres valeurs proviennent des données disponibles.";
   $("status").classList.toggle("warning", messages.length > 0);

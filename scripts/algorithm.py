@@ -15,7 +15,7 @@ MIN_MONEY_RESERVE = 50
 SIGNAL_WINDOW = 60
 ENTRY_QUANTILE = 0.20
 EXIT_QUANTILE = 0.80
-A_TARGET_WEIGHT = 0.30
+A_TARGET_UNITS = 1000
 
 def fetch_json(url):
     resp = requests.get(url, proxies={"http": None, "https": None}, timeout=(10, 20))
@@ -32,19 +32,24 @@ def compute_signal(product, prices, owned_units, portfolio_value):
         return 0.0, "Attente : prix indisponible."
     price = prices[-1]
     if product == "A":
-        if len(prices) < SIGNAL_WINDOW:
-            return 0.0, f"Attente : {len(prices)}/{SIGNAL_WINDOW} observations pour A."
-        recent = sorted(prices[-SIGNAL_WINDOW:])
-        low = recent[int(ENTRY_QUANTILE * (SIGNAL_WINDOW - 1))]
-        high = recent[int(EXIT_QUANTILE * (SIGNAL_WINDOW - 1))]
-        if low == high:
-            return 0.0, "A : seuils confondus, conserver la position."
-        if price <= low:
-            target = A_TARGET_WEIGHT * portfolio_value / price
-            reason = "A : zone basse, viser 30 % du portefeuille."
-        elif price >= high:
+        low = high = None
+        if len(prices) >= SIGNAL_WINDOW:
+            recent = sorted(prices[-SIGNAL_WINDOW:])
+            low = recent[int(ENTRY_QUANTILE * (SIGNAL_WINDOW - 1))]
+            high = recent[int(EXIT_QUANTILE * (SIGNAL_WINDOW - 1))]
+        if low is not None and low < high and price >= high:
             target = 0.0
             reason = "A : zone haute, vendre progressivement."
+        elif owned_units > A_TARGET_UNITS:
+            target = float(A_TARGET_UNITS)
+            reason = "A : alléger progressivement la position vers 1 000 unités."
+        elif low is None:
+            return 0.0, f"Attente : {len(prices)}/{SIGNAL_WINDOW} observations pour A."
+        elif low == high:
+            return 0.0, "A : seuils confondus, conserver la position."
+        elif price <= low:
+            target = float(A_TARGET_UNITS)
+            reason = "A : zone basse, acheter jusqu’à 1 000 unités."
         else:
             return 0.0, "A : entre les seuils, conserver la position."
     elif product == "B":
@@ -96,7 +101,7 @@ def save_dashboard_data(market, holdings, decision, reasons):
 
     write_json("strategy.json", {"window": SIGNAL_WINDOW,
                "entry_quantile": ENTRY_QUANTILE, "exit_quantile": EXIT_QUANTILE,
-               "a_target_weight": A_TARGET_WEIGHT, "b_mode": "hold",
+               "a_target_units": A_TARGET_UNITS, "b_mode": "hold",
                "reserve": MIN_MONEY_RESERVE})
     decisions = read_records("decision_log.json", "decisions")
     entry = {"updated_at": decision["updated_at"],

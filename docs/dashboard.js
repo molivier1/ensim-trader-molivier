@@ -264,6 +264,99 @@ function priceChart(points, projection, series, title) {
     svg.append(svgNode("path", { d: path, fill: "none", stroke: item.color, "stroke-width": item.key === "forecast" ? 2.5 : 2, "stroke-linejoin": "round", "stroke-dasharray": item.dashed ? "6 4" : "none" }));
   });
   $("price-chart").replaceChildren(svg);
+  addPriceTooltip(svg, pointsInView, i => x(start + i), y, { left, right, top, bottom });
+}
+
+function addPriceTooltip(svg, points, x, y, { left, right, top, bottom }) {
+  const container = $("price-chart");
+  const product = selectedProduct;
+  const timestampFormat = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const tooltip = element("div", undefined, "chart-tooltip");
+  tooltip.id = "price-chart-tooltip";
+  tooltip.setAttribute("role", "tooltip");
+  tooltip.hidden = true;
+  const timestamp = element("div", undefined, "chart-tooltip-date");
+  const price = element("strong");
+  tooltip.append(timestamp, price);
+  container.append(tooltip);
+
+  const marker = svgNode("g", { visibility: "hidden", "pointer-events": "none", "aria-hidden": "true" });
+  const guide = svgNode("line", { y1: top, y2: bottom, stroke: "#687987", "stroke-dasharray": "3 3" });
+  const dot = svgNode("circle", { r: 4, fill: "white", "stroke-width": 2 });
+  marker.append(guide, dot);
+  const target = svgNode("rect", {
+    x: left, y: top, width: right - left, height: bottom - top,
+    fill: "transparent", class: "chart-hover-target", tabindex: 0,
+    "aria-label": `Explorer les ticks de ${product} avec les flèches gauche et droite`,
+    "aria-describedby": tooltip.id,
+  });
+  svg.append(target, marker);
+  let selected = Math.max(0, points.findLastIndex(point => Number.isFinite(point.price)));
+
+  function hide() {
+    tooltip.hidden = true;
+    marker.setAttribute("visibility", "hidden");
+  }
+
+  function show(index) {
+    selected = Math.max(0, Math.min(points.length - 1, index));
+    const point = points[selected];
+    const estimated = Boolean(point.futureTick);
+    const value = estimated ? point.forecast : point.price;
+    if (!Number.isFinite(value)) { hide(); return; }
+    const matrix = svg.getScreenCTM();
+    if (!matrix) { hide(); return; }
+    timestamp.textContent = estimated
+      ? `Projection · +${point.futureTick} tick${point.futureTick > 1 ? "s" : ""}`
+      : timestampFormat.format(new Date(point.timestamp));
+    price.textContent = `${estimated ? "Estimation" : "Prix"} ${product} : ${value.toLocaleString("fr-FR", { maximumFractionDigits: 4 })}`;
+    guide.setAttribute("x1", x(selected));
+    guide.setAttribute("x2", x(selected));
+    dot.setAttribute("cx", x(selected));
+    dot.setAttribute("cy", y(value));
+    dot.setAttribute("stroke", estimated ? "#a45e35" : "#315c86");
+    marker.setAttribute("visibility", "visible");
+    tooltip.hidden = false;
+
+    const position = svg.createSVGPoint();
+    position.x = x(selected);
+    position.y = y(value);
+    const screen = position.matrixTransform(matrix);
+    const bounds = container.getBoundingClientRect();
+    const pointX = screen.x - bounds.left, pointY = screen.y - bounds.top;
+    const tooltipWidth = tooltip.offsetWidth, tooltipHeight = tooltip.offsetHeight;
+    const preferredLeft = pointX + 12 + tooltipWidth <= bounds.width - 8
+      ? pointX + 12 : pointX - tooltipWidth - 12;
+    tooltip.style.left = Math.max(8, Math.min(preferredLeft, bounds.width - tooltipWidth - 8)) + "px";
+    tooltip.style.top = Math.max(8, Math.min(pointY - tooltipHeight - 12, bounds.height - tooltipHeight - 8)) + "px";
+  }
+
+  function pointAtPointer(event) {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return;
+    const pointer = svg.createSVGPoint();
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    const position = pointer.matrixTransform(matrix.inverse());
+    show(Math.round((position.x - left) / (right - left) * (points.length - 1)));
+  }
+
+  target.addEventListener("pointermove", pointAtPointer);
+  target.addEventListener("pointerdown", pointAtPointer);
+  target.addEventListener("pointerleave", hide);
+  target.addEventListener("pointercancel", hide);
+  target.addEventListener("focus", () => show(selected));
+  target.addEventListener("blur", hide);
+  target.addEventListener("keydown", event => {
+    if (event.key === "Escape") hide();
+    else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      show(selected + (event.key === "ArrowLeft" ? -1 : 1));
+    }
+  });
 }
 
 function indicator(rows, product, index = rows.length - 1) {

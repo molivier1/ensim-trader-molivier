@@ -215,7 +215,7 @@ function priceChart(points, projection, series, title) {
   if (projection && historic.length) historic.at(-1).forecast = historic.at(-1).price;
   const fixedThresholds = Number.isFinite(state.config?.a_entry_price) && Number.isFinite(state.config?.a_exit_price);
   const future = projection ? projection.values.map((forecast, i) => ({
-    forecast, futureTick: i + 1, tickIndex: historic.length + i,
+    forecast, futureTick: i + 1, tick: historic.at(-1).tick + i + 1, tickIndex: historic.length + i,
     ...(selectedProduct === "A" && fixedThresholds ? { low: state.config.a_entry_price, high: state.config.a_exit_price } : {}),
   })) : [];
   const all = [...historic, ...future];
@@ -278,9 +278,10 @@ function addPriceTooltip(svg, points, x, y, { left, right, top, bottom }) {
   tooltip.id = "price-chart-tooltip";
   tooltip.setAttribute("role", "tooltip");
   tooltip.hidden = true;
+  const tick = element("div");
   const timestamp = element("div", undefined, "chart-tooltip-date");
   const price = element("strong");
-  tooltip.append(timestamp, price);
+  tooltip.append(tick, timestamp, price);
   container.append(tooltip);
 
   const marker = svgNode("g", { visibility: "hidden", "pointer-events": "none", "aria-hidden": "true" });
@@ -309,6 +310,7 @@ function addPriceTooltip(svg, points, x, y, { left, right, top, bottom }) {
     if (!Number.isFinite(value)) { hide(); return; }
     const matrix = svg.getScreenCTM();
     if (!matrix) { hide(); return; }
+    tick.textContent = `Tick n°${point.tick}`;
     timestamp.textContent = estimated
       ? `Projection · +${point.futureTick} tick${point.futureTick > 1 ? "s" : ""}`
       : timestampFormat.format(new Date(point.timestamp));
@@ -404,7 +406,7 @@ function renderPrices() {
   });
   const points = market.history.map((row, index) => {
     const item = indicator(market.history, selectedProduct, index);
-    return { timestamp: row.timestamp, price: item.price, low: item.low, high: item.high };
+    return { tick: Number.isInteger(row.t) ? row.t : index + 1, timestamp: row.timestamp, price: item.price, low: item.low, high: item.high };
   });
   const count = Number($("period").value);
   const series = [{ key: "price", label: "Prix " + selectedProduct, color: "#315c86" }];

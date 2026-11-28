@@ -433,6 +433,20 @@
         "B": "B : conserver la position, sans achat ni vente.",
         "C": "C : réduire progressivement la position, sans nouvel achat."
       }
+    },
+    {
+      "updated_at": "2026-11-28T06:48:43Z",
+      "market_timestamp": "2026-11-28T05:49:20Z",
+      "signals": {
+        "A": 0.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "reasons": {
+        "A": "A : pic estimé dans 8 ticks ; attendre avant de vendre.",
+        "B": "B : conserver la position, sans achat ni vente.",
+        "C": "C : réduire progressivement la position, sans nouvel achat."
+      }
     }
   ]
 }
